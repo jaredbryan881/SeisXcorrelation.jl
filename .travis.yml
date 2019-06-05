@@ -34,8 +34,7 @@ jobs:
       julia: 1.1
       script:
           - julia --project=docs/ -e 'using Pkg;
-            #add self-developped packages
-            Pkg.develop(PackageSpec(path=$(repr(normpath(snoopfile * "\\..\\..")))))
+            Pkg.develop(PackageSpec(path=$(repr(normpath(snoopfile * "\\..\\..")))));
             Pkg.develop(PackageSpec(path=pwd()));
             Pkg.instantiate();
             Pkg.build("SeisXcorrelation")'
