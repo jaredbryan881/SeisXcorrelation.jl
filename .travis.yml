@@ -39,6 +39,7 @@ jobs:
           # for unregistered package, it must be added with `Pkg.pkg"add url"`
           - julia -e 'using Pkg; Pkg.pkg"add https://github.com/kura-okubo/SeisIO.jl https://github.com/tclements/Noise.jl";'
           - julia --project=docs/ -e 'using Pkg;
+            Pkg.pkg"add https://github.com/kura-okubo/SeisIO.jl https://github.com/tclements/Noise.jl";
             Pkg.develop(PackageSpec(path=pwd()));
             Pkg.instantiate();
             Pkg.build("SeisXcorrelation")'
