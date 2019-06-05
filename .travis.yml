@@ -18,6 +18,7 @@ env:
   - MPI_IMPL=openmpi
 before_install:
   # for unregistered package, it must be added with `Pkg.pkg"add url"`
+  - julia -e 'using Pkg; Pkg.clone("https://github.com/tclements/SeisIO.jl.git");'
   - julia -e 'using Pkg; Pkg.clone("https://github.com/tclements/Noise.jl.git");'
   - julia -e 'using Pkg; Pkg.pkg"add https://github.com/kura-okubo/SeisIO.jl";'
   - julia -e 'using Pkg; Pkg.pkg"add https://github.com/tclements/Noise.jl"'
