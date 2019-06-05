@@ -19,8 +19,10 @@ env:
 before_install:
   # for unregistered package, it must be added with `Pkg.pkg"add url"`
   - julia -e 'using Pkg;
-    Pkg.pkg"add https://github.com/kura-okubo/SeisIO.jl"; Pkg.build("SeisIO");
-    Pkg.pkg"add https://github.com/tclements/Noise.jl"; Pkg.build("SeisIO");
+    Pkg.pkg"add https://github.com/tclements/Noise.jl.git";
+    Pkg.clone("https://github.com/tclements/Noise.jl.git");
+    Pkg.pkg"add https://github.com/kura-okubo/SeisIO.jl.git";
+    Pkg.clone("https://github.com/tclements/SeisIO.jl.git");
     cd(Pkg.dir("SeisXcorrelation")); Pkg.add("Documenter"); include(joinpath("docs", "make.jl"))'
   - julia --project=docs/ -e 'using Pkg;
         Pkg.develop(PackageSpec(path=pwd()));
