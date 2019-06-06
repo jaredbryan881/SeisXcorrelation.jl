@@ -1,10 +1,10 @@
 __precompile__()
-#module SeisXcorrelation
+module SeisXcorrelation
 
-using SeisIO, Noise, Printf, Dates, FFTW, JLD2, MPI
+using SeisIO, SeisDownload, Noise, Printf, Dates, FFTW, JLD2, MPI
 
 include("pairing.jl")
-#export seisxcorrelation, sort_pairs
+export seisxcorrelation
 
 
 """
@@ -17,6 +17,7 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 - `finame::String,`    : Input file name e.g. network = "BPnetwork"
 - `maxtimelag::Real`    : Maximum lag time e.g. maxtimelag = 100 [s]
 - `corrtype::AbstractArray`    : Array of strings containing types of correlations to compute, e.g. ["xcorr", "acorr"]
+- `corrorder`::Int    : Order of cross correlation, e.g. 3 for C3 (high order cross correlation)
 - `IsAllComponent::Bool`   : If true, compute 3 X 3 components cross-correlation
 
 # Output
@@ -24,7 +25,7 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 
 """
 
-function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArray, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
+function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArray, corrorder::Int, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
 
     MPI.Init()
     # establish the MPI communicator and obtain rank
@@ -34,6 +35,7 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
 
     # read data from JLD2
     data = jldopen(finame)
+    # output data file
     stlist = data["info/stationlist"]
     tstamplist = data["info/timestamplist"]
 
@@ -42,10 +44,14 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
     # sort station pairs into autocorr, xcorr, and xchancorr
     sorted_pairs = sort_pairs(station_pairs)
 
-    # if corr method == c2 or c3
-        # perform additional pairing on only xcorr
-
-    #Take into account IsAllComponents == true or not
+    # create output file and save station information in JLD2
+    if rank == 0
+        jldopen(foname, "w") do file
+            file["info/timestamplist"] = tstamplist;
+            file["info/stationlist"] = stlist;
+            file["info/sortedstationlist"] = sorted_pairs;
+        end
+    end
 
     mpiitrcount = 0
 
@@ -80,12 +86,14 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
                     xcorr = compute_cc(FFT1, FFT2, maxtimelag)
 
                     # save data after each cross correlation
+                    varname = "$tstamp/$(xcorr.name)"
                     if size == 1
-                        save_SeisData2JLD2(foname, varname, S)
+                        save_CorrData2JLD2(foname, varname, xcorr)
+                        exit()
 
                     else
                         if rank == 0
-                            save_SeisData2JLD2(foname, varname, S)
+                            save_CorrData2JLD2(foname, varname, xcorr)
 
                             if anchor_rank != 0
                                 MPI.Send(baton, rank+1, 11, comm)
@@ -94,12 +102,12 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
 
                         elseif rank == anchor_rank
                             MPI.Recv!(baton, rank-1, 11, comm)
-                            save_SeisData2JLD2(foname, varname, S)
+                            save_CorrData2JLD2(foname, varname, xcorr)
                             MPI.Send(baton, 0, 12, comm)
 
                         else
                             MPI.Recv!(baton, rank-1, 11, comm)
-                            save_SeisData2JLD2(foname, varname, S)
+                            save_CorrData2JLD2(foname, varname, xcorr)
                             MPI.Send(baton, rank+1, 11, comm)
                         end
                     end
@@ -116,8 +124,6 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
     return 0
 end
 
-#end
+end
 
-seisxcorrelation("../../SeisDownload.jl/EXAMPLE/Download_BK/dataset/BKnetwork.jld2", "dataOutput.jld2", ["xcorr", "xchancorr"], 100.0, 0.01, 10.0, 20.0, 58, 1)
-
-#end
+end
