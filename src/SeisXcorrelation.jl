@@ -1,9 +1,10 @@
 __precompile__()
-module SeisXcorrelation
+#module SeisXcorrelation
 
 using SeisIO, Noise, Printf, Dates, FFTW, JLD2, MPI
 
-export seisxcorrelation, sort_pairs
+include("pairing.jl")
+#export seisxcorrelation, sort_pairs
 
 
 """
@@ -16,14 +17,14 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 - `finame::String,`    : Input file name e.g. network = "BPnetwork"
 - `maxtimelag::Real`    : Maximum lag time e.g. maxtimelag = 100 [s]
 - `corrtype::AbstractArray`    : Array of strings containing types of correlations to compute, e.g. ["xcorr", "acorr"]
-- `corrorder::Int64`    : correlation order, e.g. 3 for C3 (high order cross-correlation)
 - `IsAllComponent::Bool`   : If true, compute 3 X 3 components cross-correlation
 
 # Output
 - `foname.jld2`                 : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
-function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArray, corrorder::Int64, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Real, cc_step::Real)#;IsAllComponents::Bool=false) #Add whatever necessary arguments
+
+function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArray, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
 
     MPI.Init()
     # establish the MPI communicator and obtain rank
@@ -38,7 +39,6 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
 
     # generate station pairs
     station_pairs = generate_pairs(stlist)
-
     # sort station pairs into autocorr, xcorr, and xchancorr
     sorted_pairs = sort_pairs(station_pairs)
 
@@ -52,7 +52,6 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
     baton = Array{Int32, 1}([0]) # for Relay Dumping algorithm
 
     for (t, tstamp) in enumerate(tstamplist)
-
         #parallelize one processor for one time stamp
         processID = t - (size * mpiitrcount)
 
@@ -62,7 +61,6 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
         if rank == processID-1
             # iterate over correlation categories
             for ct in corrtype
-                println(ct)
                 # iterate over station pairs in the current correlation category
                 for j = 1:length(sorted_pairs[ct][1, :])
                     # get station names
@@ -106,10 +104,8 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
                         end
                     end
                 end
-
-                mpiitrcount += 1
-
             end
+        mpiitrcount += 1
         end
     end
 
@@ -120,49 +116,8 @@ function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArra
     return 0
 end
 
-end
+#end
 
+seisxcorrelation("../../SeisDownload.jl/EXAMPLE/Download_BK/dataset/BKnetwork.jld2", "dataOutput.jld2", ["xcorr", "xchancorr"], 100.0, 0.01, 10.0, 20.0, 58, 1)
 
-"""
-
-    sort_pairs(pairs::AbstractArray)
-
-Sort station pairs into their correlation category (auto-correlation, cross-correlation, cross-channel-correlation)
-
-# Arguments
-- `pairs::AbstractArray,`    : Array of station pairs, e.g. output of generate_pairs(file["info/stationlist"])
-
-# Output
-- `sorted_pairs::Dict{String, Array{String, N}}`    : dictionary containing station pairs grouped by correlation type
-
-"""
-function sort_pairs(pairs::AbstractArray)
-    # dict containing each correlation category
-    # preallocation of dict size assumes all stations have the same number of channels, which may not be true.
-    sorted_pairs = Dict{String, Array{String}}("acorr"     => ["", ""],
-                                               "xcorr"     => ["", ""],
-                                               "xchancorr" => ["", ""])
-
-    # fill dictionary based on detected correlation type
-    for stnPair in pairs
-        # same station, same channel
-        if stnPair[1] == stnPair[2]
-            sorted_pairs["acorr"] = hcat(sorted_pairs["acorr"], stnPair)
-        # same station, different channel
-        elseif (stnPair[1][end-3:end] != stnPair[2][end-3:end]) && (stnPair[1][1:end-3] == stnPair[2][1:end-3])
-            sorted_pairs["xchancorr"] = hcat(sorted_pairs["xchancorr"], stnPair)
-        # different station
-        else
-            sorted_pairs["xcorr"] = hcat(sorted_pairs["xcorr"], stnPair)
-        end
-    end
-
-    # Remove ["", ""] used to initialized the dict
-    sorted_pairs["acorr"]     = sorted_pairs["acorr"][:, 2:end]
-    sorted_pairs["xcorr"]     = sorted_pairs["xcorr"][:, 2:end]
-    sorted_pairs["xchancorr"] = sorted_pairs["xchancorr"][:, 2:end]
-
-    return sorted_pairs
-end
-
-end
+#end
