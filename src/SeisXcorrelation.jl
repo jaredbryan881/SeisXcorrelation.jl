@@ -5,6 +5,7 @@ using SeisIO, SeisDownload, Noise, Printf, Dates, FFTW, JLD2, Distributed
 
 include("pairing.jl")
 include("fft.jl")
+include("utils.jl")
 #export seisxcorrelation
 
 
@@ -78,16 +79,4 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
     end
     return 0
 end
-
-"""
-    save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
-
-    save CorrData structure to JLD2
-"""
-function save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
-    file = jldopen(foname, "r+")
-    file[varname] = CD
-    JLD2.close(file)
-end
-
 #end
