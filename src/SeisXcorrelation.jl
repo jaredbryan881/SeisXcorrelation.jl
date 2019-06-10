@@ -1,10 +1,11 @@
 __precompile__()
-module SeisXcorrelation
+#module SeisXcorrelation
 
-using SeisIO, SeisDownload, Noise, Printf, Dates, FFTW, JLD2, MPI
+using SeisIO, SeisDownload, Noise, Printf, Dates, FFTW, JLD2, Distributed
 
 include("pairing.jl")
-export seisxcorrelation
+include("fft.jl")
+#export seisxcorrelation
 
 
 """
@@ -21,109 +22,68 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 - `IsAllComponent::Bool`   : If true, compute 3 X 3 components cross-correlation
 
 # Output
-- `foname.jld2`                 : contains SeisData structure with a hierarchical structure (CC function, metadata)
+- `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
 
-function seisxcorrelation(finame::String, foname::String, corrtype::AbstractArray, corrorder::Int, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
+@everywhere function seisxcorrelation(tstamp::String, finame::String, foname::String, corrtype::Array{String,1}, corrorder::Int, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
+    # iterate over correlation categories
+    for ct in corrtype
+        # iterate over station pairs in the current correlation category
+        for j = 1:length(sorted_pairs[ct][1, :])
+            # get station names
+            stn1 = sorted_pairs[ct][1, j]
+            stn2 = sorted_pairs[ct][2, j]
+            println("Corrrelating $stn1 with $stn2")
 
-    MPI.Init()
-    # establish the MPI communicator and obtain rank
-    comm = MPI.COMM_WORLD
-    size = MPI.Comm_size(comm)
-    rank = MPI.Comm_rank(comm)
+            # compute the xcorr on a pair of time series
+            if corrorder == 1
+                # read station SeisChannels into SeisData before FFT
+                S1 = SeisData(data["$tstamp/$stn1"])
+                if ct=="acorr" S2=S1 else S2=SeisData(data["$tstamp/$stn2"]) end # S2 is a ref to S1 if "acorr"
 
-    # read data from JLD2
-    data = jldopen(finame)
-    # output data file
-    stlist = data["info/stationlist"]
-    tstamplist = data["info/timestamplist"]
+                # compute FFT using Noise.jl -- returns type FFTData
+                FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
+                if ct=="acorr" FFT2=FFT1 else FFT2=compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len) end # FFT2 is a ref to FFT1 if "acorr"
 
-    # generate station pairs
-    station_pairs = generate_pairs(stlist)
-    # sort station pairs into autocorr, xcorr, and xchancorr
-    sorted_pairs = sort_pairs(station_pairs)
+                # compute correlation using Noise.jl -- returns type CorrData
+                xcorr = compute_cc(FFT1, FFT2, maxtimelag)
 
-    # create output file and save station information in JLD2
-    if rank == 0
-        jldopen(foname, "w") do file
-            file["info/timestamplist"] = tstamplist;
-            file["info/stationlist"] = stlist;
-            file["info/sortedstationlist"] = sorted_pairs;
-        end
-    end
+            # compute the xcorr on a pair of xcorrelations
+            elseif corrorder == 2
+                # read CorrData
+                C1 = data["$tstamp/$stn1"]
+                C2 = data["$tstamp/$stn2"]
 
-    mpiitrcount = 0
+                # compute FFT on CorrData direcly
+                FFT1 = compute_fft_c3(C1, freqmin, freqmax, fs, cc_step, cc_len)
 
-    baton = Array{Int32, 1}([0]) # for Relay Dumping algorithm
+                println("Higher order correlation methods are not yet implemented.\nExiting code.")
+                exit()
 
-    for (t, tstamp) in enumerate(tstamplist)
-        #parallelize one processor for one time stamp
-        processID = t - (size * mpiitrcount)
-
-        # if this mpiitrcount is final round or not
-        length(stlist) - size >= size * mpiitrcount ? anchor_rank = size-1 : anchor_rank = mod(length(stlist), size)-1
-
-        if rank == processID-1
-            # iterate over correlation categories
-            for ct in corrtype
-                # iterate over station pairs in the current correlation category
-                for j = 1:length(sorted_pairs[ct][1, :])
-                    # get station names
-                    stn1 = sorted_pairs[ct][1, j]
-                    stn2 = sorted_pairs[ct][2, j]
-                    println("Corrrelating $stn1 with $stn2")
-
-                    # read station SeisChannels into SeisData before FFT
-                    S1 = SeisData(data["$tstamp/$stn1"])
-                    if ct=="acorr" S2=S1 else S2=SeisData(data["$tstamp/$stn2"]) end # S2 is a ref to S1 if "acorr"
-
-                    # compute FFT using Noise.jl
-                    FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
-                    if ct=="acorr" FFT2=FFT1 else FFT2=compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len) end # FFT2 is a ref to FFT1 if "acorr"
-
-                    # compute correlation using Noise.jl
-                    xcorr = compute_cc(FFT1, FFT2, maxtimelag)
-
-                    # save data after each cross correlation
-                    varname = "$tstamp/$(xcorr.name)"
-                    if size == 1
-                        save_CorrData2JLD2(foname, varname, xcorr)
-                        exit()
-
-                    else
-                        if rank == 0
-                            save_CorrData2JLD2(foname, varname, xcorr)
-
-                            if anchor_rank != 0
-                                MPI.Send(baton, rank+1, 11, comm)
-                                MPI.Recv!(baton, anchor_rank, 12, comm)
-                            end
-
-                        elseif rank == anchor_rank
-                            MPI.Recv!(baton, rank-1, 11, comm)
-                            save_CorrData2JLD2(foname, varname, xcorr)
-                            MPI.Send(baton, 0, 12, comm)
-
-                        else
-                            MPI.Recv!(baton, rank-1, 11, comm)
-                            save_CorrData2JLD2(foname, varname, xcorr)
-                            MPI.Send(baton, rank+1, 11, comm)
-                        end
-                    end
-                end
+            # compute xcorr on a pair of xcorrelation codas
+            elseif corrorder == 3
+                println("Higher order correlation methods are not yet implemented.\nExiting code.")
+                exit()
             end
-        mpiitrcount += 1
+
+            # save data after each cross correlation
+            varname = "$tstamp/$stn1.$stn2"
+            save_CorrData2JLD2(foname, varname, xcorr)
         end
     end
-
-    if rank == 0 println("Cross-correlation and data writing completed successfully.\nJob ended at "*string(now())) end
-
-    MPI.Finalize()
-
     return 0
 end
 
+"""
+    save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
+
+    save CorrData structure to JLD2
+"""
+function save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
+    file = jldopen(foname, "r+")
+    file[varname] = CD
+    JLD2.close(file)
 end
 
-end
+#end
