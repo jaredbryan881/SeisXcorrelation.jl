@@ -1,16 +1,17 @@
+using SeisIO, Noise, JLD2, Distributed
+
 include("../../src/SeisXcorrelation.jl")
 include("../../src/pairing.jl")
 
-using SeisIO, Noise, JLD2, Distributed
-
 # input parameters
-finame = "../../../SeisDownload.jl/EXAMPLE/Download_BP/dataset/BPnetwork.jld2"
+#finame = "../../../SeisDownload.jl/EXAMPLE/Download_BP/dataset/BPnetwork.jld2"
+finame = "/Volumes/Elements/BPnetwork.jld2"
 foname = "dataOutput.jld2"
 corrorder = 1
 corrtype = ["xcorr", "xchancorr", "acorr"]
 maxtimelag = 100.0
 freqmin = 0.1
-freqmax = 10.0
+freqmax = 9.9
 fs = 20.0
 cc_len = 3600
 cc_step = 1800
@@ -20,7 +21,7 @@ data = jldopen(finame)
 
 # read station and time stamp lists
 stlist = data["info/stationlist"]
-tstamplist = data["info/timestamplist"]
+tstamplist = data["info/DLtimestamplist"]
 
 # generate station pairs
 if corrorder == 1
@@ -44,4 +45,4 @@ jldopen(foname, "w") do file
     file["info/corrstationlist"] = sorted_pairs;
 end
 
-pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), tstamplist)
+pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), tstamplist[:])

@@ -34,13 +34,17 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
             # get station names
             stn1 = sorted_pairs[ct][1, j]
             stn2 = sorted_pairs[ct][2, j]
-            println("Corrrelating $stn1 with $stn2")
+            println("$tstamp: corrrelating $stn1 with $stn2")
 
             # compute the xcorr on a pair of time series
             if corrorder == 1
                 # read station SeisChannels into SeisData before FFT
                 S1 = SeisData(data["$tstamp/$stn1"])
                 if ct=="acorr" S2=S1 else S2=SeisData(data["$tstamp/$stn2"]) end # S2 is a ref to S1 if "acorr"
+
+                # round start times to nearest millisecond to avoid split start times bug
+                S1[1].t[1,2] = round(S1[1].t[1,2], sigdigits=13)
+                S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
 
                 # compute FFT using Noise.jl -- returns type FFTData
                 FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
@@ -69,7 +73,7 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 
             # save data after each cross correlation
             varname = "$tstamp/$stn1.$stn2"
-            save_CorrData2JLD2(foname, varname, xcorr)
+            try save_CorrData2JLD2(foname, varname, xcorr) catch; println("$stn1 and $stn2 have no overlap at $tstamp.") end
         end
     end
     return 0
