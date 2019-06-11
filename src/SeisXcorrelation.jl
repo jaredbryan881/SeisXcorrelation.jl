@@ -28,12 +28,19 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 """
 function seisxcorrelation(tstamp::String, finame::String, foname::String, corrtype::Array{String,1}, corrorder::Int, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
     stniter = 1 # counter to enforce computing only unique cross-correlations
+    errorDict = Dict{String, Array{String,1}}("DimensionMismatch"=>[""], "DataUnavailable"=>[""])
     # iterate over station list
     for stn1 in stlist
         # read station SeisChannels into SeisData before FFT
         S1 = SeisData(data["$tstamp/$stn1"])
+
         # do not attempt fft if data was not available
-        if S1[1].misc["dlerror"] == 1 println("$tstamp/$stn1 unavailable."); continue end
+        if S1[1].misc["dlerror"] == 1
+            push!(errorDict["DataUnavailable"], "$tstamp/$stn1")
+            println("$tstamp/$stn1 unavailable.")
+            continue
+        end
+
         # round start times to nearest millisecond to avoid split start times bug
         S1[1].t[1,2] = round(S1[1].t[1,2], sigdigits=13)
 
@@ -43,7 +50,9 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
                 compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
             catch y
                 if isa(y, DimensionMismatch)
-                    println("$tstamp: $stn1 has a dimension mismatch"); continue
+                    push!(errorDict["DimensionMismatch"], "$tstamp/$stn1")
+                    println("$tstamp: $stn1 has a dimension mismatch")
+                    continue
                 end
             end
         else
@@ -67,8 +76,14 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
             elseif (ct=="xchancorr") && ("xchancorr" in corrtype)
                 # read station SeisChannels into SeisData before FFT
                 S2 = SeisData(data["$tstamp/$stn2"])
+
                 # do not attempt fft if data was not available
-                if S2[1].misc["dlerror"] == 1 println("$tstamp/$stn2 unavailable."); continue end
+                if S2[1].misc["dlerror"] == 1
+                    push!(errorDict["DataUnavailable"], "$tstamp/$stn2")
+                    println("$tstamp/$stn2 unavailable.")
+                    continue
+                end
+
                 # round start times to nearest millisecond to avoid split start times bug
                 S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
                 # check correlation order and compute the appropriate FFT using Noise.jl
@@ -77,7 +92,9 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
                         compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
                     catch y
                         if isa(y, DimensionMismatch)
-                            println("$tstamp: $stn2 has a dimension mismatch"); continue
+                            push!(errorDict["DimensionMismatch"], "$tstamp/$stn2")
+                            println("$tstamp: $stn2 has a dimension mismatch")
+                            continue
                         end
                     end
                 else
@@ -89,8 +106,14 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
             elseif (ct=="xcorr") && ("xcorr" in corrtype)
                 # read station SeisChannels into SeisData before FFT
                 S2 = SeisData(data["$tstamp/$stn2"])
+
                 # do not attempt fft if data was not available
-                if S2[1].misc["dlerror"] == 1 println("$tstamp/$stn2 unavailable."); continue end
+                if S2[1].misc["dlerror"] == 1
+                    push!(errorDict["DataUnavailable"], "$tstamp/$stn2")
+                    println("$tstamp/$stn2 unavailable.")
+                    continue
+                end
+
                 # round start times to nearest millisecond to avoid split start times bug
                 S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
 
@@ -100,7 +123,9 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
                         compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
                     catch y
                         if isa(y, DimensionMismatch)
-                            println("$tstamp: $stn2 has a dimension mismatch"); continue
+                            push!(errorDict["DimensionMismatch"], "$tstamp/$stn2")
+                            println("$tstamp: $stn2 has a dimension mismatch")
+                            continue
                         end
                     end
                 else corrorder == 2
@@ -122,4 +147,6 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
         end
         stniter += 1
     end
+    # save dict of dim mismatch and data availability errors to JLD2
+    save_Dict2JLD2(foname, "$tstamp/ccerrors", errorDict)
 end
