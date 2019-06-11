@@ -28,7 +28,12 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 """
 function seisxcorrelation(tstamp::String, finame::String, foname::String, corrtype::Array{String,1}, corrorder::Int, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
     stniter = 1 # counter to enforce computing only unique cross-correlations
+
+    # dictionary to contain errors
     errorDict = Dict{String, Array{String,1}}("DimensionMismatch"=>[""], "DataUnavailable"=>[""])
+    # dictionary to cache FFTs
+    FFTDict = Dict{String, FFTData}()
+
     # iterate over station list
     for stn1 in stlist
         # read station SeisChannels into SeisData before FFT
@@ -47,7 +52,13 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
         # check correlation order and compute the appropriate FFT
         if corrorder == 1
             FFT1 = try
-                compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
+                if "$stn1" in keys(FFTDict)
+                    FFTDict["$stn1"]
+                else
+                    FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
+                    FFTDict["$stn1"] = FFT1
+                    FFT1
+                end
             catch y
                 if isa(y, DimensionMismatch)
                     push!(errorDict["DimensionMismatch"], "$tstamp/$stn1")
@@ -89,7 +100,13 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 if corrorder == 1
                     FFT2 = try
-                        compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
+                        if "$stn2" in keys(FFTDict)
+                            FFTDict["$stn2"]
+                        else
+                            FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
+                            FFTDict["$stn2"] = FFT2
+                            FFT2
+                        end
                     catch y
                         if isa(y, DimensionMismatch)
                             push!(errorDict["DimensionMismatch"], "$tstamp/$stn2")
@@ -120,7 +137,13 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 if corrorder == 1
                     FFT2 = try
-                        compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
+                        if "$stn2" in keys(FFTDict)
+                            FFTDict["$stn2"]
+                        else
+                            FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
+                            FFTDict["$stn2"] = FFT2
+                            FFT2
+                        end
                     catch y
                         if isa(y, DimensionMismatch)
                             push!(errorDict["DimensionMismatch"], "$tstamp/$stn2")

@@ -20,8 +20,8 @@ cc_step = 1800
 data = jldopen(finame)
 
 # read station and time stamp lists
-stlist = data["info/stationlist"]
-tstamplist = data["info/DLtimestamplist"]
+stlist = data["info/stationlist"][:]
+tstamplist = data["info/DLtimestamplist"][1:2]
 
 # generate station pairs
 if corrorder == 1
@@ -45,4 +45,8 @@ jldopen(foname, "w") do file
     file["info/corrstationlist"] = sorted_pairs;
 end
 
-pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), tstamplist[:])
+for i=1:length(tstamplist)
+    seisxcorrelation(tstamplist[i], finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step)
+end
+close(data)
+#pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), [tstamplist[1]])
