@@ -26,57 +26,73 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 - `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
-
 @everywhere function seisxcorrelation(tstamp::String, finame::String, foname::String, corrtype::Array{String,1}, corrorder::Int, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
-    # iterate over correlation categories
-    for ct in corrtype
-        # iterate over station pairs in the current correlation category
-        for j = 1:length(sorted_pairs[ct][1, :])
-            # get station names
-            stn1 = sorted_pairs[ct][1, j]
-            stn2 = sorted_pairs[ct][2, j]
+    # iterate over station list
+    for stn1 in stlist
+        # read station SeisChannels into SeisData before FFT
+        S1 = SeisData(data["$tstamp/$stn1"])
+
+        # round start times to nearest millisecond to avoid split start times bug
+        S1[1].t[1,2] = round(S1[1].t[1,2], sigdigits=13)
+
+        # check correlation order and compute the appropriate FFT
+        if corrorder == 1
+            FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
+        else
+            println("Higher order correlation methods are not yet implemented\n")
+            exit()
+        end
+
+        # iterate over station list again
+        for stn2 in stlist
             println("$tstamp: corrrelating $stn1 with $stn2")
+            # see if this is an auto-, cross-, or xchan-correlation
+            ct = get_corrtype([stn1, stn2])
 
-            # compute the xcorr on a pair of time series
-            if corrorder == 1
+            # check if this is an autocorrelation
+            if ("acorr" in corrtype) && (ct=="acorr")
+                # set the stn2 FFT to the already computed FFT for stn1
+                FFT2 = FFT1
+
+            # check if this is a cross-channel correlation
+            elseif ("xchancorr" in corrtype) && (ct=="xchancorr")
                 # read station SeisChannels into SeisData before FFT
-                S1 = SeisData(data["$tstamp/$stn1"])
-                if ct=="acorr" S2=S1 else S2=SeisData(data["$tstamp/$stn2"]) end # S2 is a ref to S1 if "acorr"
-
+                S2 = SeisData(data["$tstamp/$stn2"])
                 # round start times to nearest millisecond to avoid split start times bug
-                S1[1].t[1,2] = round(S1[1].t[1,2], sigdigits=13)
                 S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
+                # check correlation order and compute the appropriate FFT using Noise.jl
+                if corrorder == 1
+                    FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
+                else
+                    println("Higher order correlation methods are not yet implemented\n")
+                    exit()
+                end
 
-                # compute FFT using Noise.jl -- returns type FFTData
-                FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
-                if ct=="acorr" FFT2=FFT1 else FFT2=compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len) end # FFT2 is a ref to FFT1 if "acorr"
+            # check if this is a cross-correlation
+            elseif ("xcorr" in corrtype) && (ct=="xcorr")
+                # read station SeisChannels into SeisData before FFT
+                S2 = SeisData(data["$tstamp/$stn2"])
+                # round start times to nearest millisecond to avoid split start times bug
+                S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
+                # check correlation order and compute the appropriate FFT using Noise.jl
+                if corrorder == 1
+                    FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
+                else corrorder == 2
+                    println("Higher order correlation methods are not yet implemented\n")
+                    exit()
+                end
 
-                # compute correlation using Noise.jl -- returns type CorrData
-                xcorr = compute_cc(FFT1, FFT2, maxtimelag)
-
-            # compute the xcorr on a pair of xcorrelations
-            elseif corrorder == 2
-                # read CorrData
-                C1 = data["$tstamp/$stn1"]
-                C2 = data["$tstamp/$stn2"]
-
-                # compute FFT on CorrData direcly
-                FFT1 = compute_fft_c3(C1, freqmin, freqmax, fs, cc_step, cc_len)
-
-                println("Higher order correlation methods are not yet implemented.\nExiting code.")
-                exit()
-
-            # compute xcorr on a pair of xcorrelation codas
-            elseif corrorder == 3
-                println("Higher order correlation methods are not yet implemented.\nExiting code.")
-                exit()
+            else
+                println("Skipping cross-correlation of $stn1 and $stn2.")
+                continue
             end
+
+            # compute correlation using Noise.jl -- returns type CorrData
+            xcorr = compute_cc(FFT1, FFT2, maxtimelag)
 
             # save data after each cross correlation
             varname = "$tstamp/$stn1.$stn2"
             try save_CorrData2JLD2(foname, varname, xcorr) catch; println("$stn1 and $stn2 have no overlap at $tstamp.") end
         end
     end
-    return 0
 end
-#end

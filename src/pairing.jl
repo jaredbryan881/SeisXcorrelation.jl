@@ -1,4 +1,4 @@
-export sort_pairs
+export sort_pairs, get_corrtype
 """
 
     sort_pairs(pairs::AbstractArray)
@@ -39,4 +39,30 @@ function sort_pairs(pairs::AbstractArray)
     sorted_pairs["xchancorr"] = sorted_pairs["xchancorr"][:, 2:end]
 
     return sorted_pairs
+end
+
+"""
+
+    corrtype(stnPair::Array{String, 1})
+
+Determine correlation type (cross-correlation, auto-correlation, or cross-channel-correlation) using string slicing.
+
+# Arguments
+- `stnPair::Array{String, 1},`    : Station pair, e.g. ["BP.SMNB..BP1", "BP.SMNB..BP3"]
+
+# Output
+- `corrtype::String`    : correlation type
+
+"""
+function get_corrtype(stnPair::Array{String, 1})
+    if stnPair[1] == stnPair[2]
+        ct = "acorr"
+    # same station, different channel
+    elseif (stnPair[1][end-3:end] != stnPair[2][end-3:end]) && (stnPair[1][1:end-3] == stnPair[2][1:end-3])
+        ct = "xchancorr"
+    # different station
+    else
+        ct = "xcorr"
+    end
+    return ct
 end
