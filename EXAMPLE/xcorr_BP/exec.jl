@@ -21,7 +21,7 @@ data = jldopen(finame)
 
 # read station and time stamp lists
 stlist = data["info/stationlist"][:]
-tstamplist = data["info/DLtimestamplist"][1:2]
+tstamplist = data["info/DLtimestamplist"][:]
 
 # generate station pairs
 if corrorder == 1

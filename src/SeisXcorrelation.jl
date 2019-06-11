@@ -163,6 +163,8 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
 
             # compute correlation using Noise.jl -- returns type CorrData
             xcorr = compute_cc(FFT1, FFT2, maxtimelag)
+            # stack hourly cross-correlations for a single daily average
+            stack!(xcorr, allstack=true)
 
             # save data after each cross correlation
             varname = "$tstamp/$stn1.$stn2"
