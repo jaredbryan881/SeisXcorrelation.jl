@@ -26,7 +26,23 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 - `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
-function seisxcorrelation(tstamp::String, finame::String, foname::String, corrtype::Array{String,1}, corrorder::Int, maxtimelag::Real, freqmin::Real, freqmax::Real, fs::Real, cc_len::Int, cc_step::Int, IsAllComponents::Bool=false)
+function seisxcorrelation(tstamp::String, InputDict::Dict)
+    # IO parameters
+    finame     = InputDict["finame"]
+    foname     = InputDict["foname"]
+    # correlation parameters
+    corrtype   = InputDict["corrtype"]
+    corrorder  = InputDict["corrorder"]
+    maxtimelag = InputDict["maxtimelag"]
+    # FFT parameters
+    freqmin    = InputDict["freqmin"]
+    freqmax    = InputDict["freqmax"]
+    fs         = InputDict["fs"]
+    cc_len     = InputDict["cc_len"]
+    cc_step    = InputDict["cc_step"]
+    # stacking parameters
+    stack      = InputDict["allstack"]
+
     stniter = 1 # counter to enforce computing only unique cross-correlations
 
     # dictionary to contain errors
@@ -52,6 +68,7 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
         # check correlation order and compute the appropriate FFT
         if corrorder == 1
             FFT1 = try
+                # try to read FFT from cached FFTs
                 if "$stn1" in keys(FFTDict)
                     FFTDict["$stn1"]
                 else
@@ -99,6 +116,7 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
                 S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 if corrorder == 1
+                    # try to read FFT from cached FFTs
                     FFT2 = try
                         if "$stn2" in keys(FFTDict)
                             FFTDict["$stn2"]
@@ -136,6 +154,7 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
 
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 if corrorder == 1
+                    # try to read FFT from cached FFTs
                     FFT2 = try
                         if "$stn2" in keys(FFTDict)
                             FFTDict["$stn2"]
@@ -163,8 +182,11 @@ function seisxcorrelation(tstamp::String, finame::String, foname::String, corrty
 
             # compute correlation using Noise.jl -- returns type CorrData
             xcorr = compute_cc(FFT1, FFT2, maxtimelag)
-            # stack hourly cross-correlations for a single daily average
-            stack!(xcorr, allstack=true)
+
+            if stack==true
+                # stack hourly cross-correlations for a single daily average
+                stack!(xcorr, allstack=true)
+            end
 
             # save data after each cross correlation
             varname = "$tstamp/$stn1.$stn2"

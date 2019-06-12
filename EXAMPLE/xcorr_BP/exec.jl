@@ -1,30 +1,32 @@
-using SeisIO, Noise, JLD2, Distributed
+using SeisIO, Noise, JLD2, Distributed, Dates
 
 include("../../src/SeisXcorrelation.jl")
 include("../../src/pairing.jl")
 
 # input parameters
 #finame = "../../../SeisDownload.jl/EXAMPLE/Download_BP/dataset/BPnetwork.jld2"
-finame = "/Volumes/Elements/BPnetwork.jld2"
-foname = "dataOutput.jld2"
-corrorder = 1
-corrtype = ["xcorr", "xchancorr", "acorr"]
-maxtimelag = 100.0
-freqmin = 0.1
-freqmax = 9.9
-fs = 20.0
-cc_len = 3600
-cc_step = 1800
+
+InputDict = Dict( "finame"     => "/Volumes/Elements/inputData/BPnetwork.jld2",
+                  "foname"     => "./outputData/BPnetworkxcorr_weq.jld2",
+                  "freqmin"    => 0.1,
+                  "freqmax"    => 9.9,
+                  "fs"         => 20.0,
+                  "cc_len"     => 3600,
+                  "cc_step"    => 1800,
+                  "corrtype"   => ["xcorr", "xchancorr", "acorr"],
+                  "corrorder"  => 1,
+                  "maxtimelag" => 100.0,
+                  "allstack"   => false)
 
 # read data from JLD2
-data = jldopen(finame)
+data = jldopen(InputDict["finame"])
 
 # read station and time stamp lists
 stlist = data["info/stationlist"][:]
 tstamplist = data["info/DLtimestamplist"][:]
 
 # generate station pairs
-if corrorder == 1
+if InputDict["corrorder"] == 1
     station_pairs = generate_pairs(stlist)
     # sort station pairs into autocorr, xcorr, and xchancorr
     sorted_pairs = sort_pairs(station_pairs)
@@ -39,14 +41,14 @@ else
 end
 
 # create output file and save station and pairing information in JLD2
-jldopen(foname, "w") do file
+jldopen(InputDict["foname"], "w") do file
     file["info/timestamplist"]   = tstamplist;
     file["info/stationlist"]     = stlist;
     file["info/corrstationlist"] = sorted_pairs;
 end
 
 for i=1:length(tstamplist)
-    seisxcorrelation(tstamplist[i], finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step)
+    seisxcorrelation(tstamplist[i], InputDict)
 end
 close(data)
 #pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), [tstamplist[1]])
