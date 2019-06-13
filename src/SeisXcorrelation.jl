@@ -49,15 +49,19 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
     errorDict = Dict{String, Array{String,1}}("DimensionMismatch"=>[""], "DataUnavailable"=>[""])
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
+    # list of stations that failed for this timestep
+    tserrorList = []
 
     # iterate over station list
     for stn1 in stlist
+        if "$stn1" in tserrorList continue end # don't attempt FFT if this failed already
         # read station SeisChannels into SeisData before FFT
         S1 = SeisData(data["$tstamp/$stn1"])
 
         # do not attempt fft if data was not available
         if S1[1].misc["dlerror"] == 1
-            push!(errorDict["DataUnavailable"], "$tstamp/$stn1")
+            push!(errorDict["DataUnavailable"], "$stn1")
+            push!(tserrorList, "$tstamp/$stn1")
             println("$tstamp/$stn1 unavailable.")
             continue
         end
@@ -78,7 +82,9 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
                 end
             catch y
                 if isa(y, DimensionMismatch)
-                    push!(errorDict["DimensionMismatch"], "$tstamp/$stn1")
+                    # TODO handle dimension mismatch in a way that doesnt require throwing away the full day
+                    push!(errorDict["DimensionMismatch"], "$stn1")
+                    push!(tserrorList, "$tstamp/$stn1")
                     println("$tstamp: $stn1 has a dimension mismatch")
                     continue
                 end
@@ -90,6 +96,7 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
         # iterate over station list again
         for stn2 in stlist[stniter:end]
+            if "$stn2" in tserrorList continue end # don't attempt FFT if this failed already
             println("$tstamp: corrrelating $stn1 with $stn2")
 
             # see if this is an auto-, cross-, or xchan-correlation
@@ -107,7 +114,8 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
                 # do not attempt fft if data was not available
                 if S2[1].misc["dlerror"] == 1
-                    push!(errorDict["DataUnavailable"], "$tstamp/$stn2")
+                    push!(errorDict["DataUnavailable"], "$stn2")
+                    push!(tserrorList, "$tstamp/$stn1")
                     println("$tstamp/$stn2 unavailable.")
                     continue
                 end
@@ -127,7 +135,8 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
                         end
                     catch y
                         if isa(y, DimensionMismatch)
-                            push!(errorDict["DimensionMismatch"], "$tstamp/$stn2")
+                            push!(errorDict["DimensionMismatch"], "$stn2")
+                            push!(tserrorList, "$tstamp/$stn2")
                             println("$tstamp: $stn2 has a dimension mismatch")
                             continue
                         end
@@ -144,7 +153,8 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
                 # do not attempt fft if data was not available
                 if S2[1].misc["dlerror"] == 1
-                    push!(errorDict["DataUnavailable"], "$tstamp/$stn2")
+                    push!(errorDict["DataUnavailable"], "$stn2")
+                    push!(tserrorList, "$tstamp/$stn1")
                     println("$tstamp/$stn2 unavailable.")
                     continue
                 end
@@ -165,7 +175,8 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
                         end
                     catch y
                         if isa(y, DimensionMismatch)
-                            push!(errorDict["DimensionMismatch"], "$tstamp/$stn2")
+                            push!(errorDict["DimensionMismatch"], "$stn2")
+                            push!(tserrorList, "$tstamp/$stn2")
                             println("$tstamp: $stn2 has a dimension mismatch")
                             continue
                         end
@@ -190,10 +201,17 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
             # save data after each cross correlation
             varname = "$tstamp/$stn1.$stn2"
-            try save_CorrData2JLD2(foname, varname, xcorr) catch; println("$stn1 and $stn2 have no overlap at $tstamp.") end
+            try
+                save_CorrData2JLD2(foname, varname, xcorr)
+            catch
+                println("$stn1 and $stn2 have no overlap at $tstamp.")
+                push!(tserrorList, "$tstamp/$stn1")
+            end
         end
         stniter += 1
     end
     # save dict of dim mismatch and data availability errors to JLD2
     save_Dict2JLD2(foname, "$tstamp/ccerrors", errorDict)
+    # save list of all cross correlation names that failed
+    return tserrorList
 end

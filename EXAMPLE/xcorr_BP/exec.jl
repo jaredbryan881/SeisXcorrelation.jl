@@ -22,7 +22,9 @@ InputDict = Dict( "finame"     => "/Volumes/Elements/inputData/BPnetwork.jld2",
 data = jldopen(InputDict["finame"])
 
 # read station and time stamp lists
-stlist = data["info/stationlist"][:]
+stlist = data["info/stationlist"][10:15]
+println(stlist)
+exit()
 tstamplist = data["info/DLtimestamplist"][:]
 
 # generate station pairs
@@ -45,10 +47,12 @@ jldopen(InputDict["foname"], "w") do file
     file["info/timestamplist"]   = tstamplist;
     file["info/stationlist"]     = stlist;
     file["info/corrstationlist"] = sorted_pairs;
+    file["info/tserrors"]        = []
 end
 
 for i=1:length(tstamplist)
-    seisxcorrelation(tstamplist[i], InputDict)
+    errors = seisxcorrelation(tstamplist[i], InputDict)
+    append!(data["info/tserrors"], errors)
 end
 close(data)
 #pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), [tstamplist[1]])
