@@ -210,6 +210,6 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
     end
     # save dict of dim mismatch and data availability errors to JLD2
     save_Dict2JLD2(foname, "$tstamp/ccerrors", errorDict)
-    # save list of all cross correlation names that failed
+    # return list of all cross correlation names that failed
     return tserrorList
 end

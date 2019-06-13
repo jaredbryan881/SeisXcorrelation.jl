@@ -1,4 +1,4 @@
-using SeisIO, JLD2, Noise
+using SeisIO, JLD2, Noise, PlotlyJS
 include("utils.jl")
 
 """
@@ -37,7 +37,6 @@ function compute_reference_xcorr(finame::String, foname::String, xcorrSize::Int)
             stackData = zeros(xcorrSize)
             # num of summed xcorrs
             numxcorr = 0
-
             # compute full stack for this station pair
             for tstamp in tslist
                 # do not attempt stacking if there was an error in cross-correlation
@@ -46,7 +45,7 @@ function compute_reference_xcorr(finame::String, foname::String, xcorrSize::Int)
                 end
 
                 # read data and stack
-                data = f["$tstamp/$varname"].corr
+                data = try f["$tstamp/$varname"].corr catch; continue end
                 stackData += sum(data, dims=2)
                 numxcorr += size(data)[2]
             end
@@ -55,9 +54,10 @@ function compute_reference_xcorr(finame::String, foname::String, xcorrSize::Int)
 
             # save reference xcorr
             save_Array2JLD2(foname, "$varname", stackData)
-            push!(varname, reference_xcorrnames)
+            push!(reference_xcorrnames, varname)
         end
     end
+    close(f)
     save_Array2JLD2(foname, "info/reference_xcorrnames", reference_xcorrnames)
 end
 
@@ -93,12 +93,12 @@ function convergence(finame::String, refname::String, foname::String, nxcorr::In
         # initialize running stack with size of the reference
         stackData = zeros(size(ref))
         # initialize rmse array
-        rms = zeros(length(tslist)*nxcorr)
+        rms_conv = zeros(length(tslist)*nxcorr)
 
         iter=1
         # iterate over timestamps
         for tstamp in tslist
-            data = f["$tstamp/$stpair"]
+            data = try f["$tstamp/$stpair"].corr catch; continue end
             # iterate over windowed cross-correlations
             for i=1:nxcorr
                 if skipoverlap
@@ -107,16 +107,17 @@ function convergence(finame::String, refname::String, foname::String, nxcorr::In
                 end
                 # keep running sum of cross-correlations
                 stackData += data[:, i]
+
                 # compute RMS error of the average of the running sum with the reference
-                rms[iter] = rms(ref, stackData/iter)
+                rms_conv[iter] = rms(ref[:,1], stackData[:,1] ./ iter)
                 # keep track of the number of xcorrs in the running sum
                 iter += 1
             end
         end
         # write RMS errors to foname
-        save_Array2JLD2(foname, stpair, rms)
+        save_Array2JLD2(foname, stpair, rms_conv)
     end
 end
 
-compute_reference_xcorr("../EXAMPLE/xcorr_BP/outputData/BPnetworkxcorr_weq.jld2", "reference_xcorr.jld2", 4001)
+#compute_reference_xcorr("../EXAMPLE/xcorr_BP/outputData/BPnetworkxcorr_weq.jld2", "reference_xcorr.jld2", 4001)
 convergence("../EXAMPLE/xcorr_BP/outputData/BPnetworkxcorr_weq.jld2", "reference_xcorr.jld2", "rms_weq_wol.jld2", 46)
