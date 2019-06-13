@@ -6,7 +6,7 @@ include("../../src/pairing.jl")
 # input parameters
 #finame = "../../../SeisDownload.jl/EXAMPLE/Download_BP/dataset/BPnetwork.jld2"
 
-InputDict = Dict( "finame"     => "/Volumes/Elements/inputData/BPnetwork.jld2",
+InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/RemoveEarthquakes/inputdata/BPnetwork.jld2",
                   "foname"     => "./outputData/BPnetworkxcorr_weq.jld2",
                   "freqmin"    => 0.1,
                   "freqmax"    => 9.9,
@@ -22,9 +22,7 @@ InputDict = Dict( "finame"     => "/Volumes/Elements/inputData/BPnetwork.jld2",
 data = jldopen(InputDict["finame"])
 
 # read station and time stamp lists
-stlist = data["info/stationlist"][10:15]
-println(stlist)
-exit()
+stlist = data["info/stationlist"][:]
 tstamplist = data["info/DLtimestamplist"][:]
 
 # generate station pairs
@@ -52,7 +50,10 @@ end
 
 for i=1:length(tstamplist)
     errors = seisxcorrelation(tstamplist[i], InputDict)
-    append!(data["info/tserrors"], errors)
+
+    jldopen(InputDict["foname"], "r+") do file
+        append!(file["info/tserrors"], errors)
+    end
 end
 close(data)
 #pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), [tstamplist[1]])

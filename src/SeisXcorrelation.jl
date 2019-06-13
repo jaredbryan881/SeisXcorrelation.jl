@@ -17,12 +17,10 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 
 # Arguments
 - `finame::String,`    : Input file name e.g. network = "BPnetwork"
-- `maxtimelag::Real`    : Maximum lag time e.g. maxtimelag = 100 [s]
-- `corrtype::AbstractArray`    : Array of strings containing types of correlations to compute, e.g. ["xcorr", "acorr"]
-- `corrorder`::Int    : Order of cross correlation, e.g. 3 for C3 (high order cross correlation)
-- `IsAllComponent::Bool`   : If true, compute 3 X 3 components cross-correlation
+- `InputDict::Dict`    : Dictionary containing IO, FFT, xcorr, and stacking parameters
 
 # Output
+- `tserrorList`::Array{String,1}    : Array containing the name of failed cross-correlation timestamp/stationpairs
 - `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
