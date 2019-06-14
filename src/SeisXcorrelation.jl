@@ -43,8 +43,6 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
     stniter = 1 # counter to enforce computing only unique cross-correlations
 
-    # dictionary to contain errors
-    errorDict = Dict{String, Array{String,1}}("DimensionMismatch"=>[""], "DataUnavailable"=>[""])
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
     # list of stations that failed for this timestep
@@ -58,14 +56,16 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
         # do not attempt fft if data was not available
         if S1[1].misc["dlerror"] == 1
-            push!(errorDict["DataUnavailable"], "$stn1")
             push!(tserrorList, "$tstamp/$stn1")
-            println("$tstamp/$stn1 unavailable.")
+            filter!(a->a≠"$stn1", stlist)
+            println("$tstamp: $stn1 encountered an error. Skipping.")
             continue
         end
 
         # round start times to nearest millisecond to avoid split start times bug
         S1[1].t[1,2] = round(S1[1].t[1,2], sigdigits=13)
+        # make sure the data is the proper length to avoid dimension mismatch
+        if (length(S1[1].x) > 1728000) pop!(S1[1].x) end
 
         # check correlation order and compute the appropriate FFT
         if corrorder == 1
@@ -79,13 +79,10 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
                     FFT1
                 end
             catch y
-                if isa(y, DimensionMismatch)
-                    # TODO handle dimension mismatch in a way that doesnt require throwing away the full day
-                    push!(errorDict["DimensionMismatch"], "$stn1")
-                    push!(tserrorList, "$tstamp/$stn1")
-                    println("$tstamp: $stn1 has a dimension mismatch")
-                    continue
-                end
+                push!(tserrorList, "$tstamp/$stn1")
+                filter!(a->a≠"$stn1", stlist)
+                println("$tstamp: $stn1 encountered an error. Skipping.")
+                continue
             end
         else
             println("Higher order correlation methods are not yet implemented\n")
@@ -112,14 +109,17 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
                 # do not attempt fft if data was not available
                 if S2[1].misc["dlerror"] == 1
-                    push!(errorDict["DataUnavailable"], "$stn2")
-                    push!(tserrorList, "$tstamp/$stn1")
-                    println("$tstamp/$stn2 unavailable.")
+                    push!(tserrorList, "$tstamp/$stn2")
+                    filter!(a->a≠"$stn2", stlist)
+                    println("$tstamp: $stn2 encountered an error. Skipping.")
                     continue
                 end
 
                 # round start times to nearest millisecond to avoid split start times bug
                 S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
+                # make sure the data is the proper length to avoid dimension mismatch
+                if (length(S2[1].x) > 1728000) pop!(S2[1].x) end
+
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 if corrorder == 1
                     # try to read FFT from cached FFTs
@@ -132,12 +132,10 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
                             FFT2
                         end
                     catch y
-                        if isa(y, DimensionMismatch)
-                            push!(errorDict["DimensionMismatch"], "$stn2")
-                            push!(tserrorList, "$tstamp/$stn2")
-                            println("$tstamp: $stn2 has a dimension mismatch")
-                            continue
-                        end
+                        push!(tserrorList, "$tstamp/$stn2")
+                        filter!(a->a≠"$stn2", stlist)
+                        println("$tstamp: $stn2 encountered an error. Skipping.")
+                        continue
                     end
                 else
                     println("Higher order correlation methods are not yet implemented\n")
@@ -151,9 +149,9 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
                 # do not attempt fft if data was not available
                 if S2[1].misc["dlerror"] == 1
-                    push!(errorDict["DataUnavailable"], "$stn2")
-                    push!(tserrorList, "$tstamp/$stn1")
-                    println("$tstamp/$stn2 unavailable.")
+                    push!(tserrorList, "$tstamp/$stn2")
+                    filter!(a->a≠"$stn2", stlist)
+                    println("$tstamp: $stn2 encountered an error. Skipping.")
                     continue
                 end
 
@@ -172,12 +170,10 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
                             FFT2
                         end
                     catch y
-                        if isa(y, DimensionMismatch)
-                            push!(errorDict["DimensionMismatch"], "$stn2")
-                            push!(tserrorList, "$tstamp/$stn2")
-                            println("$tstamp: $stn2 has a dimension mismatch")
-                            continue
-                        end
+                        push!(tserrorList, "$tstamp/$stn2")
+                        filter!(a->a≠"$stn2", stlist)
+                        println("$tstamp: $stn2 encountered an error. Skipping.")
+                        continue
                     end
                 else corrorder == 2
                     println("Higher order correlation methods are not yet implemented\n")
@@ -208,8 +204,6 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
         end
         stniter += 1
     end
-    # save dict of dim mismatch and data availability errors to JLD2
-    save_Dict2JLD2(foname, "$tstamp/ccerrors", errorDict)
     # return list of all cross correlation names that failed
     return tserrorList
 end
