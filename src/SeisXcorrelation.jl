@@ -192,6 +192,9 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, InputDic
             # compute correlation using Noise.jl -- returns type CorrData
             xcorr = compute_cc(FFT1, FFT2, maxtimelag)
 
+            # distance between stations
+            xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
+
             if stack==true
                 # stack hourly cross-correlations for a single daily average
                 stack!(xcorr, allstack=true)
