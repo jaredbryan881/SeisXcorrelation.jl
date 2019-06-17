@@ -24,7 +24,7 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 - `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
-function seisxcorrelation(tstamp::String, InputDict::Dict)
+function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, InputDict::Dict)
     # IO parameters
     finame     = InputDict["finame"]
     foname     = InputDict["foname"]
@@ -48,6 +48,8 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
     # list of stations that failed for this timestep
     tserrorList = []
 
+    stlist = deepcopy(stationlist)
+
     # iterate over station list
     for stn1 in stlist
         if "$stn1" in tserrorList continue end # don't attempt FFT if this failed already
@@ -65,7 +67,7 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
         # round start times to nearest millisecond to avoid split start times bug
         S1[1].t[1,2] = round(S1[1].t[1,2], sigdigits=13)
         # make sure the data is the proper length to avoid dimension mismatch
-        if (length(S1[1].x) > 1728000) pop!(S1[1].x) end
+        if (length(S1[1].x) > 1728000) pop!(S1[1].x); S1[1].t[2,1]-=1 end
 
         # check correlation order and compute the appropriate FFT
         if corrorder == 1
@@ -118,7 +120,7 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
                 # round start times to nearest millisecond to avoid split start times bug
                 S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
                 # make sure the data is the proper length to avoid dimension mismatch
-                if (length(S2[1].x) > 1728000) pop!(S2[1].x) end
+                if (length(S2[1].x) > 1728000) pop!(S2[1].x); S2[1].t[2,1]-=1 end
 
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 if corrorder == 1
@@ -157,6 +159,8 @@ function seisxcorrelation(tstamp::String, InputDict::Dict)
 
                 # round start times to nearest millisecond to avoid split start times bug
                 S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
+                # make sure the data is the proper length to avoid dimension mismatch
+                if (length(S2[1].x) > 1728000) pop!(S2[1].x); S2[1].t[2,1]-=1 end
 
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 if corrorder == 1
