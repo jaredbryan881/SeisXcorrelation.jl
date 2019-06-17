@@ -4,8 +4,6 @@ include("../../src/SeisXcorrelation.jl")
 include("../../src/pairing.jl")
 
 # input parameters
-#finame = "../../../SeisDownload.jl/EXAMPLE/Download_BP/dataset/BPnetwork.jld2"
-
 InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/RemoveEarthquakes/dataset/BPnetwork_RemovedEQ.jld2",
                   "foname"     => "testData.jld2",
                   "freqmin"    => 0.1,
@@ -50,10 +48,11 @@ end
 # TODO make sure tserrors are actually written to file
 for i=1:length(tstamplist)
     errors = seisxcorrelation(tstamplist[i], stlist, InputDict)
+
     jldopen(InputDict["foname"], "r+") do file
         append!(file["info/tserrors"], errors)
     end
 end
-
+close(data)
 println("Successfully completed cross-correlation and saved to $(InputDict["foname"])")
 #pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), [tstamplist[1]])
