@@ -4,20 +4,22 @@ include("../../src/utils.jl")
 include("../../src/Plotting/plot_data.jl")
 
 # input parameters
-InputDict = Dict( "corrname"   => "outputData/BPnetworkxcorr_neq.jld2",
-                  "refname"    => "refXCorrs/reference_xcorr_neq.jld2",
-                  "method"     => "MWCS",
-                  "freqmin"    => 0.1,
-                  "freqmax"    => 9.9,
-                  "fs"         => 20.0,
-                  "maxtimelag" => 100.0,
-                  "mintimelag" => -100.0,
-                  "dtt_lag"    => "static",
-                  "dtt_v"      => 1.0,
-                  "dtt_minlag" => -100.0,
-                  "dtt_width"  => 10.0,
-                  "window_step"=> 2.0,
-                  "dtt_sides"  => "Both")
+InputDict = Dict( "corrname"           => "outputData/BPnetworkxcorr_neq.jld2",
+                  "refname"            => "refXCorrs/reference_xcorr_neq.jld2",
+                  "method"             => "stretching",
+                  "freqmin"            => 0.1,
+                  "freqmax"            => 9.9,
+                  "fs"                 => 20.0,
+                  "maxtimelag"         => 100.0,
+                  "mintimelag"         => -100.0,
+                  "dtt_lag"            => "static",
+                  "dtt_v"              => 1.0,
+                  "dtt_minlag"         => -100.0,
+                  "dtt_width"          => 10.0,
+                  "window_length"      => 10.0,
+                  "window_step"        => 5.0,
+                  "dtt_sides"          => "Both",
+                  "smoothing_half_win" => 5)
 
 # read daily xcorrs and reference xcorr
 xcorrs = jldopen(InputDict["corrname"])
@@ -27,7 +29,7 @@ tstamplist = xcorrs["info/timestamplist"][1:end-2]
 stationpairs = reference["info/reference_xcorrnames"]
 
 #iterate over time steps
-for tstamp in tstamplist
+for tstamp in tstamplist[1:3]
     for stnpair in stationpairs[37:end]
         ref = reference[stnpair]
         cur = xcorrs["$tstamp/$stnpair"]
@@ -35,22 +37,18 @@ for tstamp in tstamplist
         stack!(cur, allstack=true)
 
         dist = xcorrs["$tstamp/$stnpair"].misc["dist"]
-        println(xcorrs["$tstamp/$stnpair"].loc)
-        data = jldopen("/Users/jared/SCECintern2019/RemoveEarthquakes/dataset/BPnetwork_RemovedEQ.jld2")
-        println(data["$tstamp/BP.CCRB..BP1"].loc)
-        println(data["$tstamp/BP.EADB..BP1"].loc)
-        exit()
 
         if InputDict["method"] == "MWCS"
-            time_axis, dt, err, coh = mwcs(ref/maximum(ref),
-                                           cur.corr/maximum(cur.corr),
+            time_axis, dt, err, coh = mwcs(ref,
+                                           cur.corr,
                                            InputDict["freqmin"],
                                            InputDict["freqmax"],
                                            InputDict["fs"],
                                            InputDict["mintimelag"],
-                                           InputDict["dtt_width"],
+                                           InputDict["window_length"],
                                            InputDict["window_step"],
-                                           0)
+                                           InputDict["smoothing_half_win"])
+
             m, em, a, ea, m0, em0 = mwcs_dvv(time_axis,
                                              dt,
                                              err,
@@ -63,8 +61,29 @@ for tstamp in tstamplist
                                              InputDict["dtt_sides"])
 
         elseif InputDict["method"] == "stretching"
-            println("Using Stretching")
-            dv, cc, cdp, eps, err, C = stretching(ref, cur, time_axis, window, InputDict["freqmin"], InputDict["freqmax"], -0.03, 0.03, 100)
+            # set up time axis
+            time_axis = InputDict["mintimelag"]:1/InputDict["fs"]:InputDict["maxtimelag"]
+
+            window_length_samples = convert(Int,InputDict["window_length"] * InputDict["fs"])
+            window_step_samples = convert(Int,InputDict["window_step"] * InputDict["fs"])
+            minind = 1:window_step_samples:length(ref) - window_length_samples
+
+            N = length(minind)
+            dv_list = zeros(N)
+            for ii=1:N
+                window = collect(minind[ii]:minind[ii]+window_length_samples-1)
+                dv, cc, cdp, eps, err, C = stretching(ref[:, 1],
+                                                      cur.corr[:, 1],
+                                                      time_axis,
+                                                      window,
+                                                      InputDict["freqmin"],
+                                                      InputDict["freqmax"],
+                                                      dvmin=-0.03,
+                                                      dvmax=0.03)
+                dv_list[ii] = dv
+            end
+            # average dv/V over all windows
+            dvV=sum(dv_list)/N
         end
 
         # save dv/v to a GeoDataFrame (?)
