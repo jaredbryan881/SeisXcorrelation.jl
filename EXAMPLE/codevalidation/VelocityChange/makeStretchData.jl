@@ -1,108 +1,71 @@
 using PlotlyJS, Random, DSP, Dierckx, FileIO, JLD2
 
-# This script makes the trace data to compare a step in the tine shifts
+include("waves.jl")
 
-#ricker wavelet function
-"""
-ricker(omega)
-returns Ricker wavelet
+# This script generates or reads a synthetic time series, and stretches it by some value
 
-input:
+function generateSignal(type::String, f::Float64, npts::Int64, dt::Float64; nptsRicker::Int64=41, seed::Int64=66473)
+    if type=="ricker"
+        # generate a ricker wavelet
+        w, t = ricker(f=f, n=nptsRicker, dt=dt)
 
-    peak frequency   = 20 Hz
-    sampling time    = 0.001 seconds
-    number of points = 100;
+        # generate a random reflectivity series
+        rng = MersenneTwister(seed)
+        f = randn(rng, Float64, npts)
 
-output:
-    s: ricker wavelet with length = number of points
-    t: time
-"""
-function ricker(;f::Float64=20.0, n::Int64=100, dt::Float64=0.001, nargout::Bool=true)
-    # Create the wavelet and shift in time if needed
-    T = dt*(n-1);
-    t = collect(0:dt:T);
-    t0 = 1/f;
-    tau = t.-t0;
+        # convolve reflectivity series with ricker wavelet
+        u0 = conv(f,w)[1:npts]
 
-    s = (1.0 .- tau.*tau.*f.^2*π.^2).*exp.(-tau.^2*π.^2*f.^2);
-
-    if nargout
-        trace = scatter(;x=t, y=s, mode="lines")
-        layout = Layout(
-            xaxis=attr(title="Time"),
-            yaxis=attr(title="u"),
-        )
-        p=plot(trace, layout)
-        display(p)
+    elseif type=="dampedSinusoid"
+        A=1.0
+        ϕ=0.0
+        λ=0.025
+        u0, t = dampedSinusoid(A=A, ω=f, ϕ=ϕ, n=npts, dt=dt, λ=λ)
     end
 
-    return (s, t)
+    return u0, t
 end
-foname="./StretchedDataSmallNoise.jld2"
-# make Ricker wavelet
 
-dt     = 0.05; # s
-#f      = 0.05; # Hz
-f = 1.0
-w,tw = ricker(f=f, n=41, dt=dt, nargout=false);
+function stretchData(u0::Array{Float64,1}, dt::Float64, dvV::Float64; n::Float64=0.0, seed::Int64=66473)
+    tvec = collect(( 0:length(u0)-1) .* dt)
+    st = tvec .* dvV
 
-## make random reflectivity sequence and convolve with Ricker
-#npts = 601
-npts = 6001; # length of time series
+    if (n != 0.0) st = addNoise(st, n) end
 
-rng = MersenneTwister(20190603)
-f    = randn(rng, Float64, npts);
-u0   = conv(f,w)[1:npts]; # make waveform time series
+    tvec2 = tvec .+ st
 
-## make time varying stretched + Noise
-dvV = - 0.0001 #dv over V [%] = dt over T, therfore dt = dv/V * T
+    spl = Spline1D(tvec, u0)
+    u1 = spl(tvec2)
 
-tvec  = collect(( 0:npts - 1 ) .* dt);
-st   = tvec .* dvV
-# add random noise (5 % of maximum st)
-rng = MersenneTwister(20190603);
-noise = randn(rng, Float64, npts);
-noise = 0.05*maximum(abs.(st)).*(noise./maximum(abs.(st)))
+    return u1, st, dt
+end
 
-#------------------#
-#if adding noise on time shift
-st = st .+ noise;
-#------------------#
+function addNoise(signal::Array{Float64,1}, level::Float64 ;seed::Int64=66473)
+    rng = MersenneTwister(seed)
+    noise = randn(rng, Float64, length(signal))
+    noise = level * maximum(abs.(signal)).*(noise./maximum(abs.(signal)))
+    signal = signal .+ noise
 
-tvec2 = tvec .+ st;
+    return signal
+end
 
-spl = Spline1D(tvec, u0)
-u1 = spl(tvec2);
+# Example of damped sinusoid generation, stretching, and noise addition
+dt = 0.05
+f = 0.5
+npts = 6001
+dvV = - 0.05
 
-st = st;
+signal1, t = generateSignal("dampedSinusoid", f, npts, dt)
+signal2, st, dt = stretchData(signal1, dt, dvV, n=0.05)
+
+signal1 = addNoise(signal1, 0.01)
+signal2 = addNoise(signal2, 0.01)
+
+trace1 = scatter(;x=t, y=signal1, mode="lines")
+trace2 = scatter(;x=t, y=signal2, mode="lines")
+plots=[trace1, trace2]
+p=PlotlyJS.plot(plots)
+display(p)
+readline()
 
 @save foname dt u0 u1 st
-
-nargout = true
-
-if nargout
-
-    #time shift curve
-
-    function lineplot1()
-        tr = scatter(;x=tvec, y=st, mode="lines", name="Timeshift")
-        layout = Layout(
-            xaxis=attr(title="Time"),
-            yaxis=attr(title="Timeshift"),
-        )
-        plot(tr, layout)
-    end
-
-    function lineplot2()
-        tr1 = scatter(;x=tvec, y=u0, mode="lines+markers", name="u0")
-        tr2 = scatter(;x=tvec, y=u1, mode="lines+markers", name="u1")
-        layout = Layout(
-            xaxis=attr(title="Time"),
-            yaxis=attr(title="Signal"),
-        )
-        plot([tr1, tr2], layout)
-    end
-
-    p = [lineplot1(), lineplot2()]
-
-end
