@@ -1,4 +1,6 @@
-using PlotlyJS, Random, DSP, Dierckx, FileIO, JLD2
+export generateSignal, stretchData, addNoise
+
+using Random, DSP, Dierckx, FileIO, JLD2
 
 include("waves.jl")
 
@@ -24,10 +26,10 @@ Generate a signal of type "ricker" or "dampedSinusoid".
 function generateSignal(type::String; params::Dict{String,Real}=Dict(), seed::Int64=66473)
     if type=="ricker"
         # unpack parameters
-        f = params["f"]
-        dt = params["dt"]
-        npr = params["nptsRicker"]
-        npts = params["npts"]
+        f    = params["f"]    # peak frequency
+        dt   = params["dt"]   # sampling interval
+        npr  = params["npr"]  # number of points in the Ricker wavelet
+        npts = params["npts"] # number of points in the generated signal
 
         # generate a ricker wavelet
         w, t = ricker(f=f, n=npr, dt=dt)
@@ -41,12 +43,12 @@ function generateSignal(type::String; params::Dict{String,Real}=Dict(), seed::In
 
     elseif type=="dampedSinusoid"
         # unpack parameters
-        A = params["A"]
-        ω = params["ω"]
-        ϕ = params["ϕ"]
-        λ = params["λ"]
-        dt = params["dt"]
-        npts = params["npts"]
+        A    = params["A"]    # amplitude of the generated signal at t-ϕ=0
+        ω    = params["ω"]    # angular frequency of the sinusoid
+        ϕ    = params["ϕ"]    # phase shift for the sinusoid
+        λ    = params["λ"]    # decay constant for the exponential decay
+        dt   = params["dt"]   # sampling interval
+        npts = params["npts"] # number of points in the generated signal
 
         u0, t = dampedSinusoid(A=A, ω=ω, ϕ=ϕ, n=npts, dt=dt, λ=λ)
     end
@@ -81,6 +83,7 @@ function stretchData(u0::Array{Float64,1}, dt::Float64, dvV::Float64; n::Float64
 
     tvec2 = tvec .+ st
 
+    # interpolation
     spl = Spline1D(tvec, u0)
     u1 = spl(tvec2)
 
@@ -110,29 +113,3 @@ function addNoise(signal::Array{Float64,1}, level::Float64; seed::Int64=66473)
 
     return signal
 end
-
-# Example of damped sinusoid generation, stretching, and noise addition
-rickerParams = Dict( "f" => 2.5,
-                     "dt" => 0.05,
-                     "nptsRicker" => 41,
-                     "npts" => 6001)
-
-dampedSinParams = Dict( "A" => 1.0,
-                        "ω" => 0.5,
-                        "ϕ" => 0.0,
-                        "λ" => 0.025,
-                        "dt" => 0.05,
-                        "npts" => 6001)
-
-signal1, t = generateSignal("ricker", params=rickerParams)
-signal2, st, dt = stretchData(signal1, 0.05, -0.1, n=0.05)
-
-signal1 = addNoise(signal1, 0.001)
-signal2 = addNoise(signal2, 0.001)
-
-trace1 = scatter(;x=t, y=signal1, mode="lines")
-trace2 = scatter(;x=t, y=signal2, mode="lines")
-plots=[trace1, trace2]
-p=PlotlyJS.plot(plots)
-display(p)
-readline()
