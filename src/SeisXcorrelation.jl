@@ -41,7 +41,7 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, InputDic
     # stacking parameters
     stack      = InputDict["allstack"]
 
-    stniter = 1 # counter to enforce computing only unique cross-correlations
+    stniter = 1 # counter to prevent computing duplicate xcorrs with reversed order
 
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
@@ -49,7 +49,6 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, InputDic
     tserrorList = []
 
     stlist = deepcopy(stationlist)
-
     # iterate over station list
     for stn1 in stlist
         if "$stn1" in tserrorList continue end # don't attempt FFT if this failed already
@@ -210,7 +209,9 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, InputDic
             end
         end
         stniter += 1
+
+        # release memory held by the FFT for this station in FFTDict
+        delete!(FFTDict, stn1)
     end
-    # return list of all cross correlation names that failed
     return tserrorList
 end
