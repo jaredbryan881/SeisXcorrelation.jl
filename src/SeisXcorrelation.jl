@@ -116,8 +116,6 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, InputDic
                     continue
                 end
 
-                # round start times to nearest millisecond to avoid split start times bug
-                S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
                 # make sure the data is the proper length to avoid dimension mismatch
                 if (length(S2[1].x) > 1728000) pop!(S2[1].x); S2[1].t[2,1]-=1 end
 
@@ -156,8 +154,6 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, InputDic
                     continue
                 end
 
-                # round start times to nearest millisecond to avoid split start times bug
-                S2[1].t[1,2] = round(S2[1].t[1,2], sigdigits=13)
                 # make sure the data is the proper length to avoid dimension mismatch
                 if (length(S2[1].x) > 1728000) pop!(S2[1].x); S2[1].t[2,1]-=1 end
 
