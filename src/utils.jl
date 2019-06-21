@@ -1,4 +1,4 @@
-using Geodesy
+using Geodesy, JLD2
 
 """
     save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
@@ -6,7 +6,7 @@ using Geodesy
     save CorrData structure to JLD2
 """
 function save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
-    file = jldopen(foname, "r+")
+    file = jldopen(foname, "a+")
     file[varname] = CD
     JLD2.close(file)
 end

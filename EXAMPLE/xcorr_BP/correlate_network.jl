@@ -4,8 +4,8 @@ include("../../src/SeisXcorrelation.jl")
 include("../../src/pairing.jl")
 
 # input parameters
-InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/RemoveEarthquakes/dataset/BPnetwork_RemovedEQ.jld2",
-                  "foname"     => "testData.jld2",
+InputDict = Dict( "finame"     => "/Volumes/Elements/inputData/BPnetwork_Jan03_joined.jld2",
+                  "basefoname"     => "testData.jld2",
                   "freqmin"    => 0.1,
                   "freqmax"    => 9.9,
                   "fs"         => 20.0,
@@ -38,7 +38,7 @@ else
 end
 
 # create output file and save station and pairing information in JLD2
-jldopen(InputDict["foname"], "w") do file
+jldopen(InputDict["basefoname"], "w") do file
     file["info/timestamplist"]   = tstamplist;
     file["info/stationlist"]     = stlist;
     file["info/corrstationlist"] = sorted_pairs;
@@ -47,11 +47,15 @@ end
 
 # TODO make sure tserrors are actually written to file
 for i=1:length(tstamplist)
+    st = time()
+    InputDict["foname"] = "testData$i.jld2"
     errors = seisxcorrelation(tstamplist[i], stlist, InputDict)
 
-    jldopen(InputDict["foname"], "r+") do file
+    jldopen(InputDict["basefoname"], "a+") do file
         append!(file["info/tserrors"], errors)
     end
+    et = time()
+    println("$(tstamplist[i]) took $(et-st) seconds.")
 end
 close(data)
 println("Successfully completed cross-correlation and saved to $(InputDict["foname"])")
