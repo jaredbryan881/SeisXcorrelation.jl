@@ -1,2 +1,5 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Noise = "8cc7c3c0-6b5d-11e9-39fe-c9cd0236e08b"
+SeisIO = "b372bb87-02dd-52bb-bcf6-c30dd83fd342"
+SeisXcorrelation = "f575b828-86f4-11e9-2d31-dfa2128ce4de"
