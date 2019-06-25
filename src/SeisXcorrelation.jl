@@ -14,12 +14,14 @@ include("correlate.jl")
 
 """
 
-    seisxcorrelation(maxtimelag::Real, finame::String, foname::String; IsAllComponent::Bool=false)
+    seisxcorrelation(tstamp::String, stationlist::Array{String,1}, inputData::JLD2.JLDFile, InputDict::Dict)
 
-Compute cross-correlation function and save data in jld2 file with SeisData format.
+Compute cross-correlation save data in jld2 file with CorrData format.
 
 # Arguments
-- `finame::String,`    : Input file name e.g. network = "BPnetwork"
+- `tstamp::String,`    : Time stamp to read from JLD2 file.
+- `stationlist::Array{String,1},`    : List of stations to be cross-correlated.
+- `inputData::JLD2.JLDFile`    : JLD2 file object to read data from.
 - `InputDict::Dict`    : Dictionary containing IO, FFT, xcorr, and stacking parameters
 
 # Output
@@ -91,7 +93,7 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, inputDat
         # iterate over station list again
         for stn2 in stlist[stniter:end]
             if "$stn2" in tserrorList continue end # don't attempt FFT if this failed already
-            #println("$tstamp: corrrelating $stn1 with $stn2")
+            println("$tstamp: corrrelating $stn1 with $stn2")
 
             # see if this is an auto-, cross-, or xchan-correlation
             # for a C3 run, we should only look at cross-correlations (to get 3 unique stations)
@@ -196,6 +198,22 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, inputDat
     return tserrorList
 end
 
+"""
+
+    seisxcorrelation(maxtimelag::Real, finame::String, foname::String; IsAllComponent::Bool=false)
+
+Compute C2 or C3 cross-correlation and save data in jld2 file with CorrData format.
+
+# Arguments
+- `tstamp::String,`    : Time stamp to read from JLD2 file.
+- `corrstationlist::Array{String,1},`    : List of cross-correlation names, e.g. BP.CCRB..BP1.BP.EADB..BP1
+- `inputData::JLD2.JLDFile`    : JLD2 file object to read data from.
+- `InputDict::Dict`    : Dictionary containing IO, FFT, xcorr, and stacking parameters
+
+# Output
+- `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
+
+"""
 function seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{String,2}, inputData::JLD2.JLDFile, InputDict::Dict)
     # IO parameters
     foname     = InputDict["foname"]
