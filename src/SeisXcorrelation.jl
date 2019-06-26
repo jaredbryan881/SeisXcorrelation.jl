@@ -74,7 +74,7 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, inputDat
 
         # make sure the data is the proper length to avoid dimension mismatch
         numpts1 = time_unit * S1[1].fs
-        if (length(S1[1].x) > numpts1) pop!(S1[1].x); S1[1].t[2,1]-=1 end
+        if (length(S1[1].x) > numpts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[2,1]=npts1 end
 
         FFT1 = try
             # try to read FFT from cached FFTs
@@ -121,7 +121,7 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, inputDat
 
                 numpts2 = time_unit * S2[1].fs
                 # make sure the data is the proper length to avoid dimension mismatch
-                if (length(S2[1].x) > numpts2) pop!(S2[1].x); S2[1].t[2,1]-=1 end
+                if (length(S2[1].x) > numpts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[2,1]=npts2 end
 
                 # try to read FFT from cached FFTs
                 FFT2 = try
@@ -154,7 +154,7 @@ function seisxcorrelation(tstamp::String, stationlist::Array{String,1}, inputDat
 
                 numpts2 = time_unit * S2[1].fs
                 # make sure the data is the proper length to avoid dimension mismatch
-                if (length(S2[1].x) > numpts2) pop!(S2[1].x); S2[1].t[2,1]-=1 end
+                if (length(S2[1].x) > numpts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[2,1]=npts2 end
 
                 # check correlation order and compute the appropriate FFT using Noise.jl
                 # try to read FFT from cached FFTs
