@@ -40,12 +40,13 @@ end
 for i=1:length(tstamplist)
     st = time()
     InputDict["foname"] = "$(InputDict["basefoname"])$i.jld2"
-    errors = seisxcorrelation_highorder(tstamplist[i], station_pairs, data, InputDict)
+    # In this case, allowable_pairs is all of the precomputed xcorrs, which is all possible station pairs.
+    # In this case, allowable_vs is all stations in the station list.
+    errors = seisxcorrelation_highorder(tstamplist[i], station_pairs, corrnames, stlist, data, InputDict)
 
     jldopen("$(InputDict["basefoname"]).jld2", "a+") do file
         append!(file["info/tserrors"], errors)
     end
-
     et = time()
     println("$(tstamplist[i]) completed in $(et-st) seconds.")
 end
