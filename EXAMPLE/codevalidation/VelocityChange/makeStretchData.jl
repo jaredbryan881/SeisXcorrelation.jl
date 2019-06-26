@@ -46,11 +46,12 @@ function generateSignal(type::String; params::Dict{String,Real}=Dict(), seed::In
         A    = params["A"]    # amplitude of the generated signal at t-ϕ=0
         ω    = params["ω"]    # angular frequency of the sinusoid
         ϕ    = params["ϕ"]    # phase shift for the sinusoid
+        η    = params["η"]    # shift in function maximum
         λ    = params["λ"]    # decay constant for the exponential decay
         dt   = params["dt"]   # sampling interval
         npts = params["npts"] # number of points in the generated signal
 
-        u0, t = dampedSinusoid(A=A, ω=ω, ϕ=ϕ, n=npts, dt=dt, λ=λ)
+        u0, t = dampedSinusoid(A=A, ω=ω, ϕ=ϕ, η=η, n=npts, dt=dt, λ=λ)
     end
 
     return u0, t
@@ -75,9 +76,9 @@ Linearly stretch a given signal, u0, by some factor given by a homogenous relati
 - `st`::Array{Float64,1}    : Stretched time axis
 
 """
-function stretchData(u0::Array{Float64,1}, dt::Float64, dvV::Float64; n::Float64=0.0, seed::Int64=66473)
-    tvec = collect(( 0:length(u0)-1) .* dt)
-    st = tvec .* dvV
+function stretchData(u0::Array{Float64,1}, dt::Float64, dvV::Float64; starttime::Float64=0.0, stloc::Float64=0.0, n::Float64=0.0, seed::Int64=66473)
+    tvec = collect(( 0:length(u0)-1) .* dt) .+ starttime
+    st = (tvec.-stloc) .* dvV
 
     if (n != 0.0) st = addNoise(st, n) end
 
@@ -87,7 +88,7 @@ function stretchData(u0::Array{Float64,1}, dt::Float64, dvV::Float64; n::Float64
     spl = Spline1D(tvec, u0)
     u1 = spl(tvec2)
 
-    return u1, st
+    return u1, tvec
 end
 
 """
