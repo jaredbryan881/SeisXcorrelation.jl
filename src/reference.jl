@@ -1,5 +1,6 @@
 using SeisIO, JLD2, Noise, PlotlyJS
 include("utils.jl")
+include("io.jl")
 
 """
 
@@ -92,12 +93,12 @@ function convergence(finame::String, refname::String, foname::String, skipoverla
         # initialize running stack with size of the reference
         stackData = zeros(size(ref))
         # initialize rmse array
-        rms_conv = zeros(length(tslist)*nxcorr)
+        rms_conv = []
 
         iter=1
         # iterate over timestamps
         for tstamp in tslist
-            println("Processing $tstamp")
+            println("Processing $stpair/$tstamp")
             data = try f["$tstamp/$stpair"].corr catch; continue end
             # iterate over windowed cross-correlations
             for i=1:size(data)[2]
@@ -109,7 +110,7 @@ function convergence(finame::String, refname::String, foname::String, skipoverla
                 stackData += data[:, i]
 
                 # compute RMS error of the average of the running sum with the reference
-                rms_conv[iter] = rms(ref[:,1], stackData[:,1] ./ iter)
+                push!(rms_conv, rms(ref[:,1], stackData[:,1] ./ iter))
                 # keep track of the number of xcorrs in the running sum
                 iter += 1
             end
