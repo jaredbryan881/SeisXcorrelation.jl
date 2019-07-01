@@ -82,7 +82,7 @@ Linearly stretch a given signal, u0, by some factor given by a homogenous relati
 - `st`::Array{Float64,1}    : Stretched time axis
 
 """
-function stretchData(u0::Array{Float64,1}, dt::Float64, dvV::Float64; starttime::Float64=0.0, stloc::Float64=0.0, n::Float64=0.0, seed::Int64=66473)
+function stretchData(u0::Union{Array{Float32,1},Array{Float64,1}}, dt::Float64, dvV::Float64; starttime::Float64=0.0, stloc::Float64=0.0, n::Float64=0.0, seed::Int64=66473)
     tvec = collect(( 0:length(u0)-1) .* dt) .+ starttime
     st = (tvec.-stloc) .* dvV
 
