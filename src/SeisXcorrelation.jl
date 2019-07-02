@@ -29,7 +29,7 @@ Compute cross-correlation save data in jld2 file with CorrData format.
 - `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
-function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Dict)
+function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JLD2.JLDFile, InputDict::Dict)
     # IO parameters
     foname     = InputDict["foname"]
     time_unit  = InputDict["timeunit"]
@@ -55,7 +55,10 @@ function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Di
     # list of stations that failed for this timestep
     tserrorList = []
 
-    stlist = keys(data[tstamp])
+    # create output file for each time stamp, fill relevant info
+    outFile = jldopen("$foname.$tstamp.jld2", "a+")
+    outFile["info/stationlist"] = stlist
+    outFile["info/timeunit"] = time_unit
 
     # iterate over station list
     for stn1 in stlist
@@ -107,7 +110,6 @@ function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Di
             if (ct=="acorr") && ("acorr" in corrtype)
                 # set the stn2 FFT to the already computed FFT for stn1
                 FFT2 = FFT1
-                continue
 
             # cross- or cross-channel correlation
             elseif ct in corrtype
@@ -157,20 +159,18 @@ function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Di
 
             varname = "$tstamp/$stn1.$stn2"
             try
-                println("Saving")
-                #save_CorrData2JLD2(foname, varname, xcorr)
+                outFile[varname] = xcorr
             catch
                 println("$stn1 and $stn2 have no overlap at $tstamp.")
                 push!(tserrorList, "$tstamp/$stn1")
             end
-        exit()
         end
         stniter += 1
 
         # release memory held by the FFT for this station in FFTDict
         delete!(FFTDict, stn1)
     end
-
+    close(outFile)
     return tserrorList
 end
 
