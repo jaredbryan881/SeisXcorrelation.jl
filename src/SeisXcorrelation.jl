@@ -1,7 +1,7 @@
 __precompile__()
 #module SeisXcorrelation
 
-using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, PlotlyJS, Sockets
+using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, PlotlyJS, Sockets, ORCA
 
 include("pairing.jl")
 include("fft.jl")
@@ -21,17 +21,17 @@ Compute cross-correlation save data in jld2 file with CorrData format.
 
 # Arguments
 - `tstamp::String,`    : Time stamp to read from JLD2 file.
-- `inputData::JLD2.JLDFile`    : JLD2 file object to read data from.
+- `stationlist::Array{String,1}`    : List of stations to be cross-correlation
 - `InputDict::Dict`    : Dictionary containing IO, FFT, xcorr, and stacking parameters
 
 # Output
 - `tserrorList`::Array{String,1}    : Array containing the name of failed cross-correlation timestamp/stationpairs
-- `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
+- `basefoname.tstamp.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
-function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JLD2.JLDFile, InputDict::Dict)
+function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,1}, InputDict::Dict)
     # IO parameters
-    foname     = InputDict["foname"]
+    basefoname = InputDict["basefoname"]
     time_unit  = InputDict["timeunit"]
     # FFT parameters
     freqmin    = InputDict["freqmin"]
@@ -50,16 +50,19 @@ function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JL
 
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
-    xcorrDict = Dict{String, CorrData}()
 
     # list of stations that failed for this timestep
     tserrorList = []
 
+    # copy station list to avoid problems when removing stations
+    stlist = deepcopy(stationlist)
+
     # create output file for each time stamp, fill relevant info
-    outFile = jldopen("$foname.$tstamp.jld2", "a+")
+    outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
     outFile["info/stationlist"] = stlist
     outFile["info/timeunit"] = time_unit
 
+    println("$tstamp: Computing cross-correlations")
     # iterate over station list
     for stn1 in stlist
         # don't attempt FFT if this failed already
@@ -67,7 +70,6 @@ function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JL
 
         # read station SeisChannels into SeisData before FFT
         S1 = SeisData(data["$tstamp/$stn1"])
-        S1[1].misc["dlerror"] = 0
 
         # do not attempt fft if data was not available
         if S1[1].misc["dlerror"] == 1
@@ -100,10 +102,8 @@ function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JL
         # iterate over station list again
         for stn2 in stlist[stniter:end]
             if stn2 in tserrorList continue end # don't attempt FFT if this failed already
-            println("$tstamp: corrrelating $stn1 with $stn2")
 
             # see if this is an auto-, cross-, or xchan-correlation
-            # for a C3 run, we should only look at cross-correlations (to get 3 unique stations)
             ct = get_corrtype([stn1, stn2])
 
             # autocorrelation
@@ -115,7 +115,6 @@ function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JL
             elseif ct in corrtype
                 # read station SeisChannels into SeisData before FFT
                 S2 = SeisData(data["$tstamp/$stn2"])
-                S2[1].misc["dlerror"] = 0
 
                 # do not attempt fft if data was not available
                 if S2[1].misc["dlerror"] == 1
@@ -154,6 +153,7 @@ function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JL
             xcorr = compute_cc(FFT1, FFT2, maxtimelag)
             # compute distance between stations
             xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
+            # TODO: make sure both station locations are maintained in CorrData
             # stack over DL_time_unit
             if stack==true stack!(xcorr, allstack=true) end
 
@@ -167,9 +167,11 @@ function seisxcorrelation(tstamp::String, stlist::Array{String,1}, inputData::JL
         end
         stniter += 1
 
-        # release memory held by the FFT for this station in FFTDict
+        # release memory held by the FFT and time series for this station
         delete!(FFTDict, stn1)
+        delete!(data, "$tstamp/$stn1")
     end
+
     close(outFile)
     return tserrorList
 end
