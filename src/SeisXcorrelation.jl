@@ -1,7 +1,7 @@
 __precompile__()
 #module SeisXcorrelation
 
-using SeisIO, SeisDownload, Noise, Printf, Dates, FFTW, JLD2, Distributed, PlotlyJS, Sockets
+using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, PlotlyJS, Sockets
 
 include("pairing.jl")
 include("fft.jl")
@@ -9,7 +9,8 @@ include("utils.jl")
 include("io.jl")
 include("partition.jl")
 include("correlate.jl")
-#export seisxcorrelation, seisxcorrelation_highorder
+
+export seisxcorrelation, seisxcorrelation_highorder
 
 
 """
@@ -31,6 +32,7 @@ Compute cross-correlation save data in jld2 file with CorrData format.
 function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Dict)
     # IO parameters
     foname     = InputDict["foname"]
+    time_unit  = InputDict["timeunit"]
     # FFT parameters
     freqmin    = InputDict["freqmin"]
     freqmax    = InputDict["freqmax"]
@@ -48,13 +50,13 @@ function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Di
 
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
+    xcorrDict = Dict{String, CorrData}()
 
     # list of stations that failed for this timestep
     tserrorList = []
 
     stlist = keys(data[tstamp])
 
-    time_unit = parse(Float64, inputData["info/DL_time_unit"])
     # iterate over station list
     for stn1 in stlist
         # don't attempt FFT if this failed already
@@ -105,9 +107,10 @@ function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Di
             if (ct=="acorr") && ("acorr" in corrtype)
                 # set the stn2 FFT to the already computed FFT for stn1
                 FFT2 = FFT1
+                continue
 
-            # cross-channel correlation
-            elseif (ct=="xchancorr") && ("xchancorr" in corrtype)
+            # cross- or cross-channel correlation
+            elseif ct in corrtype
                 # read station SeisChannels into SeisData before FFT
                 S2 = SeisData(data["$tstamp/$stn2"])
                 S2[1].misc["dlerror"] = 0
@@ -140,40 +143,6 @@ function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Di
                     continue
                 end
 
-            # cross-correlation
-            elseif (ct=="xcorr") && ("xcorr" in corrtype)
-                # read station SeisChannels into SeisData before FFT
-                S2 = SeisData(data["$tstamp/$stn2"])
-
-                # do not attempt fft if data was not available
-                if S2[1].misc["dlerror"] == 1
-                    push!(tserrorList, "$tstamp/$stn2")
-                    filter!(a->a≠stn2, stlist)
-                    println("$tstamp: $stn2 encountered an error. Skipping.")
-                    continue
-                end
-
-                # make sure the data is the proper length to avoid dimension mismatch
-                numpts2 = time_unit * S2[1].fs
-                if (length(S2[1].x) > numpts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[2,1]=npts2 end
-
-                # check correlation order and compute the appropriate FFT using Noise.jl
-                # try to read FFT from cached FFTs
-                FFT2 = try
-                    if "$stn2" in keys(FFTDict)
-                        FFTDict[stn2]
-                    else
-                        FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
-                        FFTDict[stn2] = FFT2
-                        FFT2
-                    end
-                catch y
-                    push!(tserrorList, "$tstamp/$stn2")
-                    filter!(a->a≠stn2, stlist)
-                    println("$tstamp: $stn2 encountered an error. Skipping.")
-                    continue
-                end
-
             else
                 println("Skipping cross-correlation of $stn1 and $stn2.")
                 continue
@@ -188,11 +157,13 @@ function seisxcorrelation(tstamp::String, inputData::JLD2.JLDFile, InputDict::Di
 
             varname = "$tstamp/$stn1.$stn2"
             try
-                save_CorrData2JLD2(foname, varname, xcorr)
+                println("Saving")
+                #save_CorrData2JLD2(foname, varname, xcorr)
             catch
                 println("$stn1 and $stn2 have no overlap at $tstamp.")
                 push!(tserrorList, "$tstamp/$stn1")
             end
+        exit()
         end
         stniter += 1
 
@@ -340,3 +311,5 @@ function seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{Strin
 
     return tserrors
 end
+
+#end # module
