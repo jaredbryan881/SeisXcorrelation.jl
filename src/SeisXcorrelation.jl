@@ -70,6 +70,8 @@ function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,
 
         # read station SeisChannels into SeisData before FFT
         S1 = SeisData(data["$tstamp/$stn1"])
+        try delete!(S1[1].misc, "kurtosis") catch; end
+        try delete!(S1[1].misc, "eqtimewindow") catch; end
 
         # do not attempt fft if data was not available
         if S1[1].misc["dlerror"] == 1
@@ -115,6 +117,8 @@ function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,
             elseif ct in corrtype
                 # read station SeisChannels into SeisData before FFT
                 S2 = SeisData(data["$tstamp/$stn2"])
+                try delete!(S2[1].misc, "kurtosis") catch; end
+                try delete!(S2[1].misc, "eqtimewindow") catch; end
 
                 # do not attempt fft if data was not available
                 if S2[1].misc["dlerror"] == 1
@@ -153,7 +157,9 @@ function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,
             xcorr = compute_cc(FFT1, FFT2, maxtimelag)
             # compute distance between stations
             xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
-            # TODO: make sure both station locations are maintained in CorrData
+            # save location of each station
+            xcorr.misc["location"] = [FFT1.loc, FFT2.loc]
+
             # stack over DL_time_unit
             if stack==true stack!(xcorr, allstack=true) end
 
