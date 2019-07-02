@@ -1,4 +1,4 @@
-using SeisIO, FileIO, JLD2, Noise, FFTW, PlotlyJS, Dates
+using SeisIO, FileIO, JLD2, SeisNoise, FFTW, PlotlyJS, Dates
 
 include("../../../src/SeisXcorrelation.jl")
 include("../../../src/pairing.jl")

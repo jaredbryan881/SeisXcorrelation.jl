@@ -1,6 +1,7 @@
-using SeisIO, Noise, JLD2, Distributed, Dates
+using SeisIO, SeisNoise, JLD2, Distributed, Dates
 
 include("../../src/SeisXcorrelation.jl")
+using SeisXcorrelation
 include("../../src/pairing.jl")
 
 # input parameters
@@ -27,7 +28,9 @@ tstamplist = data["info/timestamplist"][1:2]
 station_pairs = data["info/corrstationlist"]["xcorr"]
 corrnames = station_pairs[1, :] .* "." .* station_pairs[2, :]
 c3_pairs = generate_pairs(corrnames)
-
+println(size(station_pairs))
+println(station_pairs[:, 1])
+exit()
 # create output file and save station and pairing information in JLD2
 jldopen("$(InputDict["basefoname"]).jld2", "w") do file
     file["info/timestamplist"]   = tstamplist;

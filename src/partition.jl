@@ -1,4 +1,4 @@
-using SeisIO, Noise
+using SeisIO, SeisNoise
 export partition
 
 """

@@ -1,4 +1,4 @@
-using SeisIO, JLD2, Noise, PlotlyJS
+using SeisIO, JLD2, SeisNoise, PlotlyJS
 include("utils.jl")
 include("io.jl")
 

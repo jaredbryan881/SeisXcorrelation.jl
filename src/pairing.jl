@@ -47,6 +47,7 @@ Determine correlation type (cross-correlation, auto-correlation, or cross-channe
 
 """
 function get_corrtype(stnPair::Array{String, 1})
+    # same station, same channel
     if stnPair[1] == stnPair[2]
         ct = "acorr"
     # same station, different channel
