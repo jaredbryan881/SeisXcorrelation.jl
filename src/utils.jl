@@ -24,6 +24,25 @@ function dist(loc1::GeoLoc, loc2::GeoLoc)
 end
 
 """
+    window_read(len::Int64, max_len::Int64; startInd::Int64=2)
+
+Define subarrays of a given length for data reading.
+"""
+function window_read(len::Int64, max_len::Int64)
+    fullArr = collect(1:len)
+    # overflow
+    rem = length(fullArr) % max_len
+    # number of full sized subarrays
+    nWin = div(length(fullArr), max_len)
+
+    # define subarrays
+    windows = [fullArr[1+(i*max_len):(i+1)*max_len] for i=0:nWin-1]
+    if rem != 0 push!(windows, collect((max_len*nWin)+1:len)) end
+
+    return windows
+end
+
+"""
     Base.copy(x::T)
 
 Universal copy function used to copy composite types such as structs.
