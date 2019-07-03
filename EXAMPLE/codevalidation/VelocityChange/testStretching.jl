@@ -1,9 +1,9 @@
-using SeisIO, Noise, JLD2, PlotlyJS
+using SeisIO, SeisNoise, JLD2, PlotlyJS
 
 # This script tests the functionality of Stretching.jl from Noise.jl
 # This assumes data generated via genSynth.jl
 
-function testStretching(finame::String, windowlenlist::Array{Float64,1}, winsteplist::Array{Float64,1}, type::String)
+function testStretching(finame::String, InputDict::Dict, windowlenlist::Array{Float64,1}, winsteplist::Array{Float64,1}, type::String)
     valData = jldopen(finame)
     dvVlist = valData["info/dvVlist"]
     noiselist = valData["info/noiselist"]
@@ -15,27 +15,15 @@ function testStretching(finame::String, windowlenlist::Array{Float64,1}, winstep
                 ref = signals[1]
                 cur = signals[2]
 
-                # MWCS input parameters
-                InputDict = Dict( "freqmin"       => 0.1,
-                                  "freqmax"       => 9.9,
-                                  "fs"            => 20.0,
-                                  "mintimelag"    => 0.0,
-                                  "dtt_width"     => 300.0,
-                                  "dvmin"         => -0.015,
-                                  "dvmax"         => 0.015,
-                                  "ntrial"        => 100,
-                                  "window_length" => win_len,
-                                  "window_step"   => win_step)
-
-                time_axis = collect(0:1/InputDict["fs"]:300)
+                time_axis = collect(0:1/InputDict["fs"]:200)
 
                 # allow windowed stretching analysis
-                if InputDict["window_step"] == 0.0
+                if win_step == 0.0
                     minind = [1]
                     window_length_samples = length(time_axis)
                 else
-                    window_length_samples = convert(Int,InputDict["window_length"] * InputDict["fs"])
-                    window_step_samples = convert(Int,InputDict["window_step"] * InputDict["fs"])
+                    window_length_samples = convert(Int,win_len*InputDict["fs"])
+                    window_step_samples = convert(Int, win_step*InputDict["fs"])
                     minind = 1:window_step_samples:length(ref) - window_length_samples
                 end
 
@@ -59,7 +47,7 @@ function testStretching(finame::String, windowlenlist::Array{Float64,1}, winstep
                 # Report performance
                 println("True: $(dvV*100)%")
                 println("Estimated: $(sum(dv_list)/N)%")
-                error = (sum(dv_list)/N) - (dvV*100)
+                error = abs((sum(dv_list)/N) - (dvV*100)) / (dvV)
                 println("Error: $error%")
                 println("")
             end
@@ -68,8 +56,18 @@ function testStretching(finame::String, windowlenlist::Array{Float64,1}, winstep
     close(valData)
 end
 
+# MWCS input parameters
+InputDict = Dict( "freqmin"       => 0.1,
+                  "freqmax"       => 9.9,
+                  "fs"            => 20.0,
+                  "mintimelag"    => 0.0,
+                  "dtt_width"     => 200.0,
+                  "dvmin"         => -0.015,
+                  "dvmax"         => 0.015,
+                  "ntrial"        => 100)
+
 finame = "verificationData.jld2"
 windowlenlist = [300.0]
 windowsteplist = [0.0]
-type = "rickerConv"
-testStretching(finame, windowlenlist, windowsteplist, type)
+type = "realData"
+testStretching(finame, InputDict, windowlenlist, windowsteplist, type)
