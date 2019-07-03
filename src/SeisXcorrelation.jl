@@ -72,6 +72,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
 
         # read station SeisChannels into SeisData before FFT
         S1 = SeisData(data["$tstamp/$stn1"])
+        if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
         try delete!(S1[1].misc, "kurtosis") catch; end
         try delete!(S1[1].misc, "eqtimewindow") catch; end
 
@@ -122,6 +123,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             elseif ct in corrtype
                 # read station SeisChannels into SeisData before FFT
                 S2 = SeisData(data["$tstamp/$stn2"])
+                if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
                 try delete!(S2[1].misc, "kurtosis") catch; end
                 try delete!(S2[1].misc, "eqtimewindow") catch; end
 
