@@ -45,6 +45,7 @@ function testStretching(finame::String, InputDict::Dict, windowlenlist::Array{Fl
                 end
 
                 # Report performance
+                println("Noise level: $(noiselvl*100)")
                 println("True: $(dvV*100)%")
                 println("Estimated: $(sum(dv_list)/N)%")
                 error = abs((sum(dv_list)/N) - (dvV*100)) / (dvV)

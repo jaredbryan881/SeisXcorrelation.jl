@@ -54,6 +54,7 @@ function testMWCS(finame::String, InputDict::Dict, windowlenlist::Array{Float64,
                 end
 
                 # Report performance
+                println("Noise level: $(noiselvl*100)%")
                 println("Smoothing: $smooth")
                 println("Window_length: $win_len")
                 println("True: $(-true_dtt*100)%")
