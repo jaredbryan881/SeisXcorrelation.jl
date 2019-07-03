@@ -7,7 +7,7 @@ include("../../src/utils.jl")
 # input parameters
 InputDict = Dict( "finame"     => "/Users/jared/Desktop/Cascadia_sac2jld2test.jld2",
                   "timeunit"   => 86400,
-                  "basefoname" => "./CascadiaTest/testData",
+                  "basefoname" => "./CascadiaTest/cascadiaTest",
                   "maxReadNum" => 6,
                   "freqmin"    => 0.1,
                   "freqmax"    => 2.4,
@@ -41,7 +41,7 @@ st=time()
 mapWindows = window_read(length(tstamplist), InputDict["maxReadNum"])
 for win in mapWindows
     # load timesteps into array of dicts [Dict(ts/stn=>data for stn in stlist) for ts in tslist]
-    dsets = read_JLD22Dict(data, tstamplist, win)
+    dsets = read_JLD22Dict(data[win], tstamplist[win])
     # map seisxcorrelation over timesteps
     errors = pmap((x,y)->seisxcorrelation(x, y, InputDict), dsets, tstamplist[win])
     #TODO: write tserrors to basefile
@@ -49,3 +49,4 @@ end
 et=time()
 close(data)
 println("Successfully completed and saved cross-correlations in $(et-st) seconds."
+rmprocs(workers())

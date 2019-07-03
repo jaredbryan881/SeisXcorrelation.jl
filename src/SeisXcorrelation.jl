@@ -41,7 +41,6 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     cc_step    = InputDict["cc_step"]
     # correlation parameters
     corrtype   = InputDict["corrtype"]
-    corrorder  = InputDict["corrorder"]
     maxtimelag = InputDict["maxtimelag"]
     # stacking parameters
     stack      = InputDict["allstack"]
@@ -194,23 +193,23 @@ end
 
 """
 
-    seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{String,2}, inputData::JLD2.JLDFile, InputDict::Dict)
+    seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{String,2}, data::JLD2.JLDFile, InputDict::Dict)
 
 Compute C2 or C3 cross-correlation and save data in jld2 file with CorrData format.
 
 # Arguments
 - `tstamp::String,`    : Time stamp to read from JLD2 file.
 - `corrstationlist::Array{String,1},`    : List of cross-correlation names, e.g. BP.CCRB..BP1.BP.EADB..BP1
-- `inputData::JLD2.JLDFile`    : JLD2 file object to read data from.
+- `data::JLD2.JLDFile`    : JLD2 file object to read data from.
 - `InputDict::Dict`    : Dictionary containing IO, FFT, xcorr, and stacking parameters
 
 # Output
-- `foname.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
+- `basefoname.tstamp.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
 
 """
-function seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{String,2}, allowable_pairs::Array{String,1}, allowable_vs::Array{String,1}, inputData::JLD2.JLDFile, InputDict::Dict)
+function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist::Array{String,2}, allowable_pairs::Array{String,1}, allowable_vs::Array{String,1}, InputDict::Dict)
     # IO parameters
-    foname     = InputDict["foname"]
+    basefoname = InputDict["basefoname"]
     # Partitioning parameters
     start_lag  = InputDict["start_lag"]
     win_len    = InputDict["window_len"]
@@ -222,7 +221,6 @@ function seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{Strin
     cc_step    = InputDict["cc_step"]
     # correlation parameters
     corrtype   = InputDict["corrtype"]
-    corrorder  = InputDict["corrorder"]
     maxtimelag = InputDict["maxtimelag"]
     # stacking parameters
     stack      = InputDict["allstack"]
@@ -245,57 +243,79 @@ function seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{Strin
         win_len  = convert(Int64, win_len*fs)
     end
 
+    outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
+    outFile["info/corrstationlist"] = xcorrlist
+
+    println("$tstamp: Computing cross-correlations")
     for p1=1:length(xcorrlist[1,:])
         pair1 = xcorrlist[:, p1]
         p1name = pair1[1]*"."*pair1[2]
+        p1namerev = pair1[2]*"."*pair1[1]
         for p2=pairiter:length(xcorrlist[1,:])
             pair2 = xcorrlist[:, p2]
             p2name = pair2[1]*"."*pair2[2]
 
             # read data only if we have 3 unique stations
             virt_src = intersect(pair1, pair2)
+
             if length(virt_src) != 1 continue end
 
             # set stations used as receivers for c3
             stn1 = setdiff(pair1, virt_src)[1]
             stn2 = setdiff(pair2, virt_src)[1]
 
+            # keep string instead of array for ease of use
+            virt_src = virt_src[1]
+
             # read data only if we have 3 unique station pairs
             if get_corrtype([stn1, stn2]) != "xcorr" continue end
             # read data only if the virtual source is approved
             if virt_src ∉ allowable_vs continue end
+
             # read data only if the station pair is approved
-            if ("$stn1.$stn2" ∉ allowable_pairs) || ("$stn2.$stn1" ∉ allowable_pairs) continue end
+            if ("$stn1.$stn2" ∉ allowable_pairs) && ("$stn2.$stn1" ∉ allowable_pairs) continue end
 
             # load FFT1 from dict if it exists
-            if "$(virt_src[1])/$stn1" in keys(FFTDict)
-                FFT1 = FFTDict["$(virt_src[1])/$stn1"]
+            if "$(virt_src)/$stn1" in keys(FFTDict)
+                FFT1 = FFTDict["$(virt_src)/$stn1"]
             else
                 # load data and (optionally) reverse it to get virt_src-stn config
                 # copy struct to prevent in-place reversal from messing up future xcorrs
-                xcorr1 = copy(inputData["$tstamp/$p1name"])
+                xcorr1 = copy(data["$tstamp/$p1name"])
+
+                if size(xcorr1.corr, 2)>1
+                    stack!(xcorr1)
+                    #@warn "Cross-correlations are not stacked. Stacking before window extraction."
+                end
 
                 # reverse xcorr if we loaded stn1-virt_src to get virt_src-stn1
-                if virt_src==pair1[2] xcorr1.corr=reverse(xcorr1.corr) end
+                if virt_src==pair1[2] xcorr1.corr=reverse(xcorr1.corr, dims=1) end
+
                 # partition xcorr into positive and negative windows
                 xcorr1.corr = partition(xcorr1.corr, start_lag, win_len)
 
                 # compute FFT
                 FFT1 = compute_fft_c3(xcorr1, freqmin, freqmax, fs, cc_step, cc_len)
 
-                FFTDict["$(virt_src[1])/$stn1"] = FFT1
+                FFTDict["$(virt_src)/$stn1"] = FFT1
             end
 
             # load FFT2 from dict if it exists
-            if "$(virt_src[1])/$stn2" in keys(FFTDict)
-                FFT2 = FFTDict["$(virt_src[1])/$stn2"]
+            if "$virt_src/$stn2" in keys(FFTDict)
+                FFT2 = FFTDict["$virt_src/$stn2"]
             else
                 # load data and (optionally) reverse it to get virt_src-stn config
                 # copy struct to prevent in-place reversal from messing up future xcorrs
-                xcorr2 = copy(inputData["$tstamp/$p2name"])
+                xcorr2 = copy(data["$tstamp/$p2name"])
+
+                if size(xcorr2.corr, 2)>1
+                    stack!(xcorr2)
+                    #@warn "Cross-correlations are not stacked. Stacking before window extraction."
+                end
 
                 # reverse xcorr if we loaded stn1-virt_src to get virt_src-stn1
-                if virt_src==pair2[2] xcorr2.corr=reverse(xcorr2.corr) end
+                if virt_src==pair2[2] xcorr2.corr=reverse(xcorr2.corr, dims=1) end
+
                 # partition xcorr into positive and negative windows
                 xcorr2.corr = partition(xcorr2.corr, start_lag, win_len)
 
@@ -307,12 +327,12 @@ function seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{Strin
 
             #compute xcorr - 1st half of dim=2 is neg lag, 2nd half is pos lag
             xcorr_c3 = compute_cc_c3(FFT1, FFT2, maxtimelag)
-            xcorr_c3.name = "$stn1.$stn2.$(virt_src[1])"
+            xcorr_c3.name = "$stn1.$stn2.$virt_src"
 
             # save cross-correlation
-            varname = "$tstamp/$stn1.$stn2/$(virt_src[1])"
+            varname = "$tstamp/$stn1.$stn2/$virt_src"
             try
-                save_CorrData2JLD2(foname, varname, xcorr)
+                outFile[varname] = xcorr_c3
             catch
                 println("$varname encountered an error on saving to JLD2.")
                 push!(tserrorList, varname)
@@ -322,12 +342,16 @@ function seisxcorrelation_highorder(tstamp::String, corrstationlist::Array{Strin
 
         # release memory held by the FFT for this station pair in FFTDict
         delete!(FFTDict, p1name)
-        delete!(FFTDict, pair1[2]*"."*pair1[1])
+        delete!(FFTDict, p1namerev)
+        # release memory held by the input data
+        delete!(data, "$tstamp/$p1name")
+        delete!(data, "$tstamp/$p1namerev")
 
         pairiter += 1
     end
+    close(outFile)
 
-    return tserrors
+    return tserrorList
 end
 
 #end # module

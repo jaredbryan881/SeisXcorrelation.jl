@@ -1,12 +1,12 @@
 using SeisIO, SeisNoise, JLD2, Distributed, Dates
 
-include("../../src/SeisXcorrelation.jl")
-using SeisXcorrelation
+@everywhere include("../../src/SeisXcorrelation.jl")
 include("../../src/pairing.jl")
 
 # input parameters
-InputDict = Dict( "finame"     => "./outputData/BPnetworkxcorr_Jan03.jld2",
-                  "basefoname" => "testData",
+InputDict = Dict( "basefiname" => "./testData/BPnetwork_Jan03_xcorrs",
+                  "basefoname" => "./testOutputc3/BPnetwork_Jan03_c3xcorrs",
+                  "maxReadNum" => 6,
                   "start_lag"  => 0.0,
                   "window_len" => 100.0,
                   "freqmin"    => 0.1,
@@ -20,17 +20,14 @@ InputDict = Dict( "finame"     => "./outputData/BPnetworkxcorr_Jan03.jld2",
                   "allstack"   => true)
 
 # read data from JLD2
-data = jldopen(InputDict["finame"])
+data = jldopen(InputDict["basefiname"]*".jld2")
 # read station and time stamp lists
-stlist = data["info/stationlist"][:]
-tstamplist = data["info/timestamplist"][1:2]
-
+stlist = data["info/stationlist"]
+tstamplist = data["info/timestamplist"]
 station_pairs = data["info/corrstationlist"]["xcorr"]
 corrnames = station_pairs[1, :] .* "." .* station_pairs[2, :]
 c3_pairs = generate_pairs(corrnames)
-println(size(station_pairs))
-println(station_pairs[:, 1])
-exit()
+
 # create output file and save station and pairing information in JLD2
 jldopen("$(InputDict["basefoname"]).jld2", "w") do file
     file["info/timestamplist"]   = tstamplist;
@@ -39,20 +36,24 @@ jldopen("$(InputDict["basefoname"]).jld2", "w") do file
     file["info/tserrors"]        = []
 end
 
+# get indices of timesteps to load in each iteration
+mapWindows = window_read(length(tstamplist), InputDict["maxReadNum"])
+for win in mapWindows
+    st=time()
+    # load timesteps into array of dicts [Dict(ts/stn=>data for stn in stlist) for ts in tslist]
+    fileHandles = [jldopen(InputDict["basefiname"]*".$i.jld2") for i in tstamplist[win]]
+    dsets = read_JLD22Dict(fileHandles, tstamplist[win])
 
-for i=1:length(tstamplist)
-    st = time()
-    InputDict["foname"] = "$(InputDict["basefoname"])$i.jld2"
-    # In this case, allowable_pairs is all of the precomputed xcorrs, which is all possible station pairs.
-    # In this case, allowable_vs is all stations in the station list.
-    errors = seisxcorrelation_highorder(tstamplist[i], station_pairs, corrnames, stlist, data, InputDict)
+    # map seisxcorrelation over timesteps
+    errors = pmap((x,y)->seisxcorrelation_highorder(x, y, station_pairs, corrnames, stlist, InputDict), dsets, tstamplist[win])
 
-    jldopen("$(InputDict["basefoname"]).jld2", "a+") do file
-        append!(file["info/tserrors"], errors)
-    end
-    et = time()
-    println("$(tstamplist[i]) completed in $(et-st) seconds.")
+    for f in fileHandles close(f) end
+
+    #TODO: write tserrors to basefile
+    et=time()
+    println("Section took $(et-st) seconds")
 end
+
 close(data)
-println("Successfully completed cross-correlation and saved to $(InputDict["foname"])")
-#pmap(x -> seisxcorrelation(x, finame, foname, corrtype, corrorder, maxtimelag, freqmin, freqmax, fs, cc_len, cc_step), [tstamplist[1]])
+println("Successfully completed cross-correlation and saved to $(InputDict["basefoname"])")
+rmprocs(workers())
