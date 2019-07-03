@@ -15,21 +15,21 @@ export seisxcorrelation, seisxcorrelation_highorder
 
 """
 
-    seisxcorrelation(tstamp::String, stationlist::Array{String,1}, inputData::JLD2.JLDFile, InputDict::Dict)
+    seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
 
 Compute cross-correlation save data in jld2 file with CorrData format.
 
 # Arguments
+- `data`::Dict    : Dictionary containing input data in the form: tstamp/stn => SeisChannel
 - `tstamp::String,`    : Time stamp to read from JLD2 file.
-- `stationlist::Array{String,1}`    : List of stations to be cross-correlation
 - `InputDict::Dict`    : Dictionary containing IO, FFT, xcorr, and stacking parameters
 
 # Output
 - `tserrorList`::Array{String,1}    : Array containing the name of failed cross-correlation timestamp/stationpairs
-- `basefoname.tstamp.jld2`    : contains SeisData structure with a hierarchical structure (CC function, metadata)
+- `basefoname.tstamp.jld2`    : contains CorrData structure with a hierarchical structure (CC function, metadata)
 
 """
-function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,1}, InputDict::Dict)
+function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     # IO parameters
     basefoname = InputDict["basefoname"]
     time_unit  = InputDict["timeunit"]
@@ -54,8 +54,10 @@ function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,
     # list of stations that failed for this timestep
     tserrorList = []
 
-    # copy station list to avoid problems when removing stations
-    stlist = deepcopy(stationlist)
+    # split dataset names (keys of data) by "/" to get station list
+    # assume form "$tstamp/$station"
+    dsk = collect(keys(data))
+    stlist = [string(split.(dsk[i], "/")[2]) for i=1:length(dsk)]
 
     # create output file for each time stamp, fill relevant info
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
@@ -74,11 +76,14 @@ function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,
         try delete!(S1[1].misc, "eqtimewindow") catch; end
 
         # do not attempt fft if data was not available
-        if S1[1].misc["dlerror"] == 1
-            push!(tserrorList, "$tstamp/$stn1")
-            filter!(a->a≠stn1, stlist)
-            println("$tstamp: $stn1 encountered an error. Skipping.")
-            continue
+        try
+            if S1[1].misc["dlerror"] == 1
+                push!(tserrorList, "$tstamp/$stn1")
+                filter!(a->a≠stn1, stlist)
+                println("$tstamp: $stn1 encountered an error. Skipping.")
+                continue
+            end
+        catch
         end
 
         # make sure the data is the proper length to avoid dimension mismatch
@@ -121,11 +126,14 @@ function seisxcorrelation(data::Dict, tstamp::String, stationlist::Array{String,
                 try delete!(S2[1].misc, "eqtimewindow") catch; end
 
                 # do not attempt fft if data was not available
-                if S2[1].misc["dlerror"] == 1
-                    push!(tserrorList, "$tstamp/$stn2")
-                    filter!(a->a≠stn2, stlist)
-                    println("$tstamp: $stn2 encountered an error. Skipping.")
-                    continue
+                try
+                    if S2[1].misc["dlerror"] == 1
+                        push!(tserrorList, "$tstamp/$stn2")
+                        filter!(a->a≠stn2, stlist)
+                        println("$tstamp: $stn2 encountered an error. Skipping.")
+                        continue
+                    end
+                catch
                 end
 
                 # make sure the data is the proper length to avoid dimension mismatch
