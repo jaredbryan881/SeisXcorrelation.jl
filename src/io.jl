@@ -20,7 +20,7 @@ end
 """
 function read_JLD22Dict(inFile::JLD2.JLDFile, tstamplist::AbstractArray)
     # create a list of dictionaries containing input data for each time step
-    dsets = [Dict("$ts/$stn" => inFile["$ts/$stn"] for stn in keys(inFile[ts])) for ts in tstamplist[times]]
+    dsets = [Dict("$ts/$stn" => inFile["$ts/$stn"] for stn in keys(inFile[ts])) for ts in tstamplist]
     return dsets
 end
 
