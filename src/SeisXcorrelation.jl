@@ -167,7 +167,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             # compute distance between stations
             xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
             # save location of each station
-            xcorr.misc["location"] = [FFT1.loc, FFT2.loc]
+            xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
 
             # stack over DL_time_unit
             if stack==true stack!(xcorr, allstack=true) end
@@ -283,13 +283,17 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
                 # copy struct to prevent in-place reversal from messing up future xcorrs
                 xcorr1 = copy(data["$tstamp/$p1name"])
 
-                if size(xcorr1.corr, 2)>1
-                    stack!(xcorr1)
-                    #@warn "Cross-correlations are not stacked. Stacking before window extraction."
-                end
+                if size(xcorr1.corr, 2)>1 stack!(xcorr1) end
 
                 # reverse xcorr if we loaded stn1-virt_src to get virt_src-stn1
-                if virt_src==pair1[2] xcorr1.corr=reverse(xcorr1.corr, dims=1) end
+                if virt_src==pair1[2]
+                    xcorr1.corr=reverse(xcorr1.corr, dims=1)
+                    vs_loc = xcorr1.misc["location"][pair1[2]]
+                    stn1_loc = xcorr1.misc["location"][pair1[1]]
+                else
+                    vs_loc = xcorr1.misc["location"][pair1[1]]
+                    stn1_loc = xcorr1.misc["location"][pair1[2]]
+                end
 
                 # partition xcorr into positive and negative windows
                 xcorr1.corr = partition(xcorr1.corr, start_lag, win_len)
@@ -308,13 +312,15 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
                 # copy struct to prevent in-place reversal from messing up future xcorrs
                 xcorr2 = copy(data["$tstamp/$p2name"])
 
-                if size(xcorr2.corr, 2)>1
-                    stack!(xcorr2)
-                    #@warn "Cross-correlations are not stacked. Stacking before window extraction."
-                end
+                if size(xcorr2.corr, 2)>1 stack!(xcorr2) end
 
                 # reverse xcorr if we loaded stn1-virt_src to get virt_src-stn1
-                if virt_src==pair2[2] xcorr2.corr=reverse(xcorr2.corr, dims=1) end
+                if virt_src==pair2[2]
+                    xcorr2.corr=reverse(xcorr2.corr, dims=1)
+                    stn2_loc = xcorr2.misc["location"][pair2[1]]
+                else
+                    stn2_loc = xcorr2.misc["location"][pair1[2]]
+                end
 
                 # partition xcorr into positive and negative windows
                 xcorr2.corr = partition(xcorr2.corr, start_lag, win_len)

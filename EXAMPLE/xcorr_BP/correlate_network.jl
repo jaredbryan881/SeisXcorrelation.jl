@@ -5,9 +5,9 @@ include("../../src/pairing.jl")
 include("../../src/utils.jl")
 
 # input parameters
-InputDict = Dict( "finame"     => "/Users/jared/Desktop/Cascadia_sac2jld2test.jld2",
+InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/data/seismic/BPnetwork_Jan03_neq.jld2",
                   "timeunit"   => 86400,
-                  "basefoname" => "./CascadiaTest/cascadiaTest2",
+                  "basefoname" => "./testData/BPnetwork_Jan03_xcorrs",
                   "maxReadNum" => 6,
                   "freqmin"    => 0.1,
                   "freqmax"    => 2.4,
