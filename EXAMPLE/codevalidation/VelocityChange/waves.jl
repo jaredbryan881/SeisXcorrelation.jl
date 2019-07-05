@@ -16,7 +16,7 @@ Generate a Ricker wavelet.
 - `t`::Array{Float64,1}    : Time axis
 
 """
-function ricker(;f::Float64=20.0, n::Int64=100, dt::Float64=0.001)
+function ricker(;f::Float64=20.0, n::Int64=41, dt::Float64=0.05)
     # Create the wavelet and shift in time if needed
     T = dt*(n-1);
     t = collect(0:dt:T);
@@ -25,7 +25,7 @@ function ricker(;f::Float64=20.0, n::Int64=100, dt::Float64=0.001)
 
     s = (1.0 .- tau.*tau.*f.^2*π.^2).*exp.(-tau.^2*π.^2*f.^2);
 
-    return (s, t)
+    return s,t
 end
 
 """
@@ -41,17 +41,18 @@ Generate a damped sinusoid.
 - `ω::Float64`    : Frequency
 - `λ::Float64`    : Decay constant
 - `ϕ::Float64`    : Phase angle at t=0
+- `η::Float64`    : Shift in function maximum
 
 # Output
 - `dampedSin::Array{Float64,1}`    : Computed damped sinusoid
 - `t::Array{Float64,1}`    : Time axis
 
 """
-function dampedSinusoid(;A::Float64=1.0, ω::Float64=1.0, ϕ::Float64=0.0, n::Int64=100, dt::Float64=0.001, λ::Float64=2.0)
+function dampedSinusoid(;A::Float64=1.0, ω::Float64=1.0, ϕ::Float64=0.0, η::Float64=0.0, n::Int64=100, dt::Float64=0.001, t0=0.0, λ::Float64=2.0)
     T = dt * (n-1)
-    t = collect(0:dt:T)
+    t = collect(0:dt:T) .+ t0
 
-    dampedSin = A*exp.(-λ*t) .* cos.(ω*t .+ ϕ)
+    dampedSin = A*exp.(-λ*abs.(t.-η)) .* cos.(ω*t .+ ϕ)
 
     return (dampedSin, t)
 end

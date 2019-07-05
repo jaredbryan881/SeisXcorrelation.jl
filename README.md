@@ -1,4 +1,4 @@
-# SeisXcorrelation.jl
+# SeisXcorrelation
 
 **Compute cross-correlation function of each waveform pairs.**
 

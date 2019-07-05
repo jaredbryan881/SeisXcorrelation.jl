@@ -1,12 +1,11 @@
 using SeisIO, Noise, JLD2, PlotlyJS
 
 include("../../src/utils.jl")
-include("../../src/Plotting/plot_data.jl")
 
 # input parameters
 InputDict = Dict( "corrname"           => "outputData/BPnetworkxcorr_neq.jld2",
                   "refname"            => "refXCorrs/reference_xcorr_neq.jld2",
-                  "method"             => "stretching",
+                  "method"             => "MWCS",
                   "freqmin"            => 0.1,
                   "freqmax"            => 9.9,
                   "fs"                 => 20.0,
@@ -25,7 +24,7 @@ InputDict = Dict( "corrname"           => "outputData/BPnetworkxcorr_neq.jld2",
 xcorrs = jldopen(InputDict["corrname"])
 reference = jldopen(InputDict["refname"])
 
-tstamplist = xcorrs["info/timestamplist"][1:end-2]
+tstamplist = xcorrs["info/timestamplist"][:]
 stationpairs = reference["info/reference_xcorrnames"]
 
 #iterate over time steps
@@ -85,7 +84,6 @@ for tstamp in tstamplist[1:3]
             # average dv/V over all windows
             dvV=sum(dv_list)/N
         end
-
         # save dv/v to a GeoDataFrame (?)
     end
 end

@@ -21,19 +21,11 @@ function sort_pairs(pairs::AbstractArray)
 
     # fill dictionary based on detected correlation type
     for stnPair in pairs
-        # same station, same channel
-        if stnPair[1] == stnPair[2]
-            sorted_pairs["acorr"] = hcat(sorted_pairs["acorr"], stnPair)
-        # same station, different channel
-        elseif (stnPair[1][end-3:end] != stnPair[2][end-3:end]) && (stnPair[1][1:end-3] == stnPair[2][1:end-3])
-            sorted_pairs["xchancorr"] = hcat(sorted_pairs["xchancorr"], stnPair)
-        # different station
-        else
-            sorted_pairs["xcorr"] = hcat(sorted_pairs["xcorr"], stnPair)
-        end
+        ct = get_corrtype(stnPair)
+        sorted_pairs[ct] = hcat(sorted_pairs[ct], stnPair)
     end
 
-    # Remove ["", ""] used to initialized the dict
+    # remove ["",""] used to initialize dict
     sorted_pairs["acorr"]     = sorted_pairs["acorr"][:, 2:end]
     sorted_pairs["xcorr"]     = sorted_pairs["xcorr"][:, 2:end]
     sorted_pairs["xchancorr"] = sorted_pairs["xchancorr"][:, 2:end]
@@ -51,10 +43,11 @@ Determine correlation type (cross-correlation, auto-correlation, or cross-channe
 - `stnPair::Array{String, 1},`    : Station pair, e.g. ["BP.SMNB..BP1", "BP.SMNB..BP3"]
 
 # Output
-- `corrtype::String`    : correlation type
+- `corrtype::String`    : correlation type, e.g. "xchancorr"
 
 """
 function get_corrtype(stnPair::Array{String, 1})
+    # same station, same channel
     if stnPair[1] == stnPair[2]
         ct = "acorr"
     # same station, different channel

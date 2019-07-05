@@ -1,8 +1,6 @@
-using FileIO, SeisIO, Noise, JLD2, PlotlyJS
+using FileIO, SeisIO, SeisyNoise, JLD2, PlotlyJS
 
-function plot_data()
-    finame="/Users/jared/SCECintern2019/SeisXcorrelation.jl/EXAMPLE/xcorr_BP/outputData/BPnetworkxcorr_weq.jld2"
-    stnname="BP.EADB..BP1.BP.VCAB..BP1"
+function plot_data(finame, stname)
     f = jldopen(finame)
     timestamplist = f["info/timestamplist"][1:end-1]
 
@@ -11,20 +9,19 @@ function plot_data()
                     xaxis_title="Lags [s]",
                     font =attr(size=18),
                     showlegend=true,
-                    title="$stnname")
+                    title="$stname")
     p = PlotlyJS.plot([NaN], layout)
 
     day = 0
-    for t in timestamplist
-        key = "$t/$stnname"
-        ts = f[key]
+    for t in timestamplist[1:end-1]
+        key = "$t/$stname"
+        ts = try f[key] catch; continue end
         lags = -ts.maxlag:1/ts.fs:ts.maxlag
 
         stack!(ts, allstack=true)
 
         norm_factor = maximum(ts.corr[:])
 
-        xcorr = bandpass(ts.corr[:, 1], 0.1, 0.9, ts.fs)
         try
             trace1 = scatter(;x=lags, y=xcorr[:,1] ./ (2 * norm_factor) .+ day, mode="lines", linecolor="rgb(0,0,0)", name="$t")
             addtraces!(p, trace1)
@@ -42,4 +39,65 @@ function plot_data()
     close(f)
 end
 
-plot_data()
+function plot_reference()
+    finame_weq="../reference_xcorr.jld2"
+    finame_neq="../reference_xcorr_neq.jld2"
+
+    fweq = jldopen(finame_weq)
+    fneq = jldopen(finame_neq)
+
+    stname = "BP.CCRB..BP1.BP.EADB..BP1"
+
+    data_weq = fweq[stname]
+    data_neq = fneq[stname]
+
+    lags = -100.0:1/20.0:100.0
+
+    # set up plot
+    layout = Layout(width=1200, height=800,
+                    xaxis_title="Lags [s]",
+                    font =attr(size=18),
+                    showlegend=true,
+                    title="$stname")
+
+    p = PlotlyJS.plot([NaN], layout)
+
+    trace1 = scatter(;x=lags, y=data_weq[:, 1], mode="lines", linecolor="rgb(0,0,0)", name="Raw Data")
+    #addtraces!(p, trace1)
+    trace2 = scatter(;x=lags, y=data_neq[:, 1], mode="lines", linecolor="rgb(0,0,0)", name="Earthquakes Removed")
+    addtraces!(p, trace2)
+    deletetraces!(p, 1)
+    display(p)
+    readline()
+end
+
+function plot_convergence()
+    finame_weq="../rms_weq_wol.jld2"
+    finame_neq="../rms_neq_wol.jld2"
+
+    fweq = jldopen(finame_weq)
+    fneq = jldopen(finame_neq)
+
+    stname = "BP.CCRB..BP1.BP.EADB..BP1"
+
+    lags = -100.0:1/20.0:100.0
+    data_weq = fweq[stname]
+    data_neq = fneq[stname]
+
+    # set up plot
+    layout = Layout(width=1200, height=800,
+                    xaxis_title="Stacked cross-correlations",
+                    font =attr(size=18),
+                    showlegend=true,
+                    title="$stname")
+
+    p = PlotlyJS.plot([NaN], layout)
+
+    trace1 = scatter(;x=1:length(data_weq), y=data_weq, mode="lines", linecolor="rgb(0,0,0)", name="Raw Data")
+    addtraces!(p, trace1)
+    trace2 = scatter(;x=1:length(data_weq), y=data_neq, mode="lines", linecolor="rgb(0,0,0)", name="Earthquakes Removed")
+    #addtraces!(p, trace2)
+    deletetraces!(p, 1)
+    display(p)
+    readline()
+end

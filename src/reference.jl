@@ -1,5 +1,6 @@
-using SeisIO, JLD2, Noise, PlotlyJS
+using SeisIO, JLD2, SeisNoise, PlotlyJS
 include("utils.jl")
+include("io.jl")
 
 """
 
@@ -69,9 +70,8 @@ Compute the RMS error between progressively longer stacks of cross-correlations 
 
 # Arguments
 - `finame::String,`    : Input file name for unstacked cross-correlations e.g. "./inputData/BPnetwork.jld2"
-- `finame::refname,`    : Input file name for reference cross-corrleations e.g. "./inputData/BPnetwork.jld2"
+- `refname::String,`    : Input file name for reference cross-corrleations e.g. "./inputData/BPnetwork.jld2"
 - `foname::String,`    : Output file name for fully stacked xcorrs e.g. "referenceXcorr.jld2"
-- `ntwindows::Int`    : Number of cross-correlations in each CorrData object
 - `skipoverlap::Bool`    : Whether or not to skip overlap in cross-correlation windows. If cross-correlations were computed
                            with no overlap, set this to false to ensure no time is skipped.
 
@@ -79,7 +79,7 @@ Compute the RMS error between progressively longer stacks of cross-correlations 
 - `foname.jld2`    : contains arrays of RMS errors for progressively longer stacks of cross-correlations
 
 """
-function convergence(finame::String, refname::String, foname::String, nxcorr::Int, skipoverlap::Bool=false)
+function convergence(finame::String, refname::String, foname::String, skipoverlap::Bool=false)
     f = jldopen(finame)
     ref_f = jldopen(refname)
 
@@ -93,14 +93,15 @@ function convergence(finame::String, refname::String, foname::String, nxcorr::In
         # initialize running stack with size of the reference
         stackData = zeros(size(ref))
         # initialize rmse array
-        rms_conv = zeros(length(tslist)*nxcorr)
+        rms_conv = []
 
         iter=1
         # iterate over timestamps
         for tstamp in tslist
+            println("Processing $stpair/$tstamp")
             data = try f["$tstamp/$stpair"].corr catch; continue end
             # iterate over windowed cross-correlations
-            for i=1:nxcorr
+            for i=1:size(data)[2]
                 if skipoverlap
                     # assume overlap is half of window length and skip overlapping windows
                     i=2*i - 1
@@ -109,7 +110,7 @@ function convergence(finame::String, refname::String, foname::String, nxcorr::In
                 stackData += data[:, i]
 
                 # compute RMS error of the average of the running sum with the reference
-                rms_conv[iter] = rms(ref[:,1], stackData[:,1] ./ iter)
+                push!(rms_conv, rms(ref[:,1], stackData[:,1] ./ iter))
                 # keep track of the number of xcorrs in the running sum
                 iter += 1
             end
@@ -118,6 +119,3 @@ function convergence(finame::String, refname::String, foname::String, nxcorr::In
         save_Array2JLD2(foname, stpair, rms_conv)
     end
 end
-
-#compute_reference_xcorr("../EXAMPLE/xcorr_BP/outputData/BPnetworkxcorr_weq.jld2", "reference_xcorr.jld2", 4001)
-convergence("../EXAMPLE/xcorr_BP/outputData/BPnetworkxcorr_weq.jld2", "reference_xcorr.jld2", "rms_weq_wol.jld2", 46)

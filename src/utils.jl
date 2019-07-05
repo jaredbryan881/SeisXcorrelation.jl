@@ -1,42 +1,10 @@
-using Geodesy, JLD2
-
-"""
-    save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
-
-    save CorrData structure to JLD2
-"""
-function save_CorrData2JLD2(foname::String, varname::String, CD::CorrData)
-    file = jldopen(foname, "a+")
-    file[varname] = CD
-    JLD2.close(file)
-end
-
-"""
-    save_Dict2JLD2(foname::String, varname::String, D::Dict)
-
-    save Dictionary to JLD2
-"""
-function save_Dict2JLD2(foname::String, varname::String, D::Dict)
-    file = jldopen(foname, "r+")
-    file[varname] = D
-    JLD2.close(file)
-end
-
-"""
-    save_Dict2JLD2(foname::String, varname::String, D::Dict)
-
-    save Dictionary to JLD2
-"""
-function save_Array2JLD2(foname::String, varname::String, A::AbstractArray)
-    file = jldopen(foname, "a+")
-    file[varname] = A
-    JLD2.close(file)
-end
+using Geodesy
+export rms, dist
 
 """
     rms(A::AbstractArray, B::AbstractArray)
 
-    Compute the root mean squared error between two arrays
+Compute the root mean squared error between two arrays
 """
 function rms(A::AbstractArray, B::AbstractArray)
     return sqrt(sum((B.-A).^2)/length(A))
@@ -45,8 +13,8 @@ end
 """
     dist(loc1::GeoLoc, loc2::GeoLoc)
 
-    Compute the distance (m) between two points (lat, lon, elev)
-    This assumes the distance is not large, such that the curvature of the earth is negligible.
+Compute the distance (m) between two points (lat, lon, elev)
+This assumes the distance is not large, such that the curvature of the earth is negligible.
 """
 function dist(loc1::GeoLoc, loc2::GeoLoc)
     loc1_lla = LLA(loc1.lat, loc1.lon, loc1.el)
@@ -54,3 +22,29 @@ function dist(loc1::GeoLoc, loc2::GeoLoc)
 
     return distance(loc1_lla, loc2_lla)
 end
+
+"""
+    window_read(len::Int64, max_len::Int64; startInd::Int64=2)
+
+Define subarrays of a given length for data reading.
+"""
+function window_read(len::Int64, max_len::Int64)
+    fullArr = collect(1:len)
+    # overflow
+    rem = length(fullArr) % max_len
+    # number of full sized subarrays
+    nWin = div(length(fullArr), max_len)
+
+    # define subarrays
+    windows = [fullArr[1+(i*max_len):(i+1)*max_len] for i=0:nWin-1]
+    if rem != 0 push!(windows, collect((max_len*nWin)+1:len)) end
+
+    return windows
+end
+
+"""
+    Base.copy(x::T)
+
+Universal copy function used to copy composite types such as structs.
+"""
+Base.copy(x::T) where T = T([deepcopy(getfield(x, k)) for k ∈ fieldnames(T)]...)

@@ -1,4 +1,4 @@
-using PlotlyJS, FileIO, JLD2
+using PlotlyJS, FileIO, JLD2, SeisIO
 
 # This script makes two time_shifted or stretched traces for validation of SeisXcorrelation
 
@@ -13,6 +13,7 @@ f2 = f1*1.01
 
 npts = 6000; # length of time series
 
+foname = "./sinStretchTest.jld2"
 #----------------------------------#
 #Period of sine
 T1 = 1/f1
@@ -38,10 +39,24 @@ tvec  = collect(( 0:npts - 1 ) .* dt);
 
 Δtlag_true = tarrival_2 - tarrival_1 # true arrival time, which should be equal to the time at maximam coherency of cross-correlation function
 
-#@save "./sinStretchTest.jld2" dt u1 u2 f1 f2 Δtlag_true
+# package generated signal in SeisChannel and save
+t=[1 0; npts 0]
+Ch1 = SeisChannel(name="BP.u1u1.fst", id="BP.u1u1.fst", x=u1, fs=1/dt, t=t)
+Ch1.misc["dlerror"] = 0
+Ch2 = SeisChannel(name="BP.u2u2.snd", id="BP.u2u2.snd", x=u2, fs=1/dt, t=t)
+Ch2.misc["dlerror"] = 0
+jldopen(foname, "a+") do file
+    file["info/DLtimestamplist"] = ["time1"]
+    file["info/stationlist"] = ["BP.u1u1.fst", "BP.u2u2.snd"]
+    file["info/DL_time_unit"] = npts*dt
+    file["info/f1"] = f1
+    file["info/f2"] = f2
+    file["info/Δtlag_true"] = Δtlag_true
+    file["time1/BP.u1u1.fst"] = Ch1
+    file["time1/BP.u2u2.snd"] = Ch2
+end
 
 #plot curve
-
 function lineplot1()
     tr1 = scatter(;x=tvec, y=u1, mode="lines+markers", name="u1")
     tr2 = scatter(;x=tvec, y=u2, mode="lines+markers", name="u2")
@@ -54,5 +69,3 @@ function lineplot1()
     display(p)
     readline()
 end
-
-lineplot1()
