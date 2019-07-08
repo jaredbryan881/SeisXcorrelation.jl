@@ -4,13 +4,18 @@ import LinearAlgebra.pinv
 # This is a script to test the functionality of the DTW functions of DTWDT.jl
 # This assumes synthetic data generated via genSynth.jl
 
-function testDTW(finame::String, InputDict::Dict, type::String)
+function testDTW(finame::String, foname::String, InputDict::Dict, type::String; plot::Bool=false)
     valData = jldopen(finame)
     dvVlist = valData["info/dvVlist"]
     noiselist = valData["info/noiselist"]
 
-    for dvV in dvVlist[1:10:end]
-        for noiselvl in noiselist[1:10:end]
+    f_err = jldopen(foname, "a+")
+    f_err["info/dvV"] = dvVlist
+    f_err["info/noise"] = noiselist
+
+    for dvV in dvVlist[1:5:end]
+        println("dv/v: $dvV")
+        for noiselvl in noiselist[:]
             signals = valData["$type/$dvV.$noiselvl"]
             (u1, u2) = signals
 
@@ -26,18 +31,17 @@ function testDTW(finame::String, InputDict::Dict, type::String)
 
             (stbarTime, stbar, dist, error) = dtwdt(u1, u2, dt, maxLag=maxLag, b=b, direction=direction)
 
+            # linear regression for dv/V
             A = ones(npts,2)
-            A[:,1] = Array(1:npts) ./ npts
+            A[:,2] = tvec
             coef = pinv(A) * stbarTime
             (a, m) = coef
 
-            # Report results
-            println("Noise level: $(noiselvl*100)%")
-            println("True dvV: $(dvV*100)%")
-            println("Regressed dvV: $(-m)%")
-            println("Distance: $error")
+            if plot==true
+                plot_dtt(tvec, stbarTime, m, dvV)
+            end
 
-            plot_dtt(tvec, stbarTime, -m/100, dvV)
+            f_err["$type/$dvV.$noiselvl"] = error
         end
     end
 end
@@ -52,14 +56,22 @@ function plot_dtt(tvec::Array{Float64,1}, stbarTime::Array{Float64,1}, m::Float6
 end
 
 # MWCS input parameters
-InputDict = Dict( "maxLag"    => 150,
-                  "b"         => 1,
-                  "st"        => 0,
-                  "dt"        => 0.05,
-                  "direction" => 0,
-                  "mintime"   => -100.0)
+InputDict_real = Dict( "maxLag"    => 150,
+                       "b"         => 1,
+                       "st"        => 0,
+                       "dt"        => 0.05,
+                       "direction" => 0,
+                       "mintime"   => -100.0)
+
+InputDict_synth = Dict( "maxLag"    => 150,
+                        "b"         => 1,
+                        "st"        => 0,
+                        "dt"        => 0.05,
+                        "direction" => 0,
+                        "mintime"   => 0.0)
 
 finame = "verificationData.jld2"
-type = "realData"
+foname = "verificationDataError_DTW.jld2"
+type = "rickerConv"
 
-testDTW(finame, InputDict, type)
+testDTW(finame, foname, InputDict_synth, type)
