@@ -1,36 +1,25 @@
-using FileIO, SeisIO, SeisyNoise, JLD2, PlotlyJS
+using SeisIO, SeisNoise, JLD2, PlotlyJS, StatsBase, Sockets
 
-function plot_data(finame, stname)
+function plot_seismograms(finame::String, stn::String; sparse::Int64=1)
     f = jldopen(finame)
-    timestamplist = f["info/timestamplist"][1:end-1]
+    timestamplist = f["info/DLtimestamplist"]
 
     # set up plot
     layout = Layout(width=1200, height=800,
                     xaxis_title="Lags [s]",
-                    font =attr(size=18),
+                    yaxis_title="Days",
+                    font=attr(size=18),
                     showlegend=true,
-                    title="$stname")
+                    title="$stn")
     p = PlotlyJS.plot([NaN], layout)
 
-    day = 0
-    for t in timestamplist[1:end-1]
-        key = "$t/$stname"
-        ts = try f[key] catch; continue end
-        lags = -ts.maxlag:1/ts.fs:ts.maxlag
+    for (titer, time) in enumerate(timestamplist)
+        ts = f["$time/$stn"][1]
 
-        stack!(ts, allstack=true)
-
-        norm_factor = maximum(ts.corr[:])
-
-        try
-            trace1 = scatter(;x=lags, y=xcorr[:,1] ./ (2 * norm_factor) .+ day, mode="lines", linecolor="rgb(0,0,0)", name="$t")
-            addtraces!(p, trace1)
-        catch
-            println("Plotting failed")
-            close(f)
-            exit()
-        end
-        day = day + 1
+        taxis = collect(0:length(ts.x)-1) ./ ts.fs
+        norm_factor = maximum(ts.x)
+        trace = scatter(;x=taxis[1:sparse:end], y=((ts.x ./ norm_factor) .+ titer .- 1)[1:sparse:end], mode="lines", linecolor="rgb(0,0,0)", name="$time")
+        addtraces!(p, trace)
     end
     deletetraces!(p, 1)
     display(p)
@@ -39,17 +28,72 @@ function plot_data(finame, stname)
     close(f)
 end
 
-function plot_reference()
-    finame_weq="../reference_xcorr.jld2"
-    finame_neq="../reference_xcorr_neq.jld2"
+function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type="wiggles", maxlag=100.0, dt=0.05)
+    f = jldopen(basefiname*".jld2")
+    timestamplist = f["info/timestamplist"]
 
-    fweq = jldopen(finame_weq)
-    fneq = jldopen(finame_neq)
+    # set up plot
+    layout = Layout(width=1200, height=800,
+                    xaxis_title="Lags [s]",
+                    font=attr(size=18),
+                    showlegend=true,
+                    title="$stn1.$stn2")
+    p = PlotlyJS.plot([NaN], layout)
 
-    stname = "BP.CCRB..BP1.BP.EADB..BP1"
+    stnpair = stn1*"."*stn2
+    stnpairrev = stn2*"."*stn1
 
-    data_weq = fweq[stname]
-    data_neq = fneq[stname]
+    if type=="heatmap" xcorr_heat = [] end
+
+    for (titer, time) in enumerate(timestamplist)
+        f_cur = jldopen(basefiname*".$time.jld2")
+        xcorr = try
+            xcorr = f_cur["$time/$stnpair"]
+            stack!(xcorr, allstack=true)
+            xcorr
+        catch y;
+            println("reversing at: $time")
+            xcorr = f_cur["$time/$stnpairrev"]
+            stack!(xcorr, allstack=true)
+            xcorr.corr = reverse(xcorr.corr, dims=1)
+            xcorr
+        end
+        lags = -xcorr.maxlag:1/xcorr.fs:xcorr.maxlag
+
+        norm_factor = maximum(xcorr.corr[:])
+
+        try
+            if type=="wiggles"
+                trace = scatter(;x=lags, y=xcorr.corr[:,1] ./ (2 * norm_factor) .+ titer .- 1, mode="lines", linecolor="rgb(0,0,0)", name="$time")
+                addtraces!(p, trace)
+            elseif type=="heatmap"
+                append!(xcorr_heat, xcorr.corr[:, 1]./ (norm_factor))
+            end
+        catch y
+            println(y)
+            println("Plotting failed")
+            close(f_cur)
+        end
+        close(f_cur)
+    end
+
+    if type=="heatmap"
+        lags = -maxlag:dt:maxlag
+        xcorr_heat = reshape(xcorr_heat, convert(Int64, length(xcorr_heat)/length(timestamplist)), length(timestamplist))
+        trace = PlotlyJS.heatmap(x=lags, z=xcorr_heat)
+        addtraces!(p, trace)
+    end
+    deletetraces!(p, 1)
+    display(p)
+    readline()
+
+    close(f)
+end
+
+function plot_reference(finame::String, stn1::String, stn2::String)
+    f = jldopen(finame)
+    stname = stn1*"."*stn2
+    data = f[stname]
 
     lags = -100.0:1/20.0:100.0
 
@@ -61,42 +105,31 @@ function plot_reference()
                     title="$stname")
 
     p = PlotlyJS.plot([NaN], layout)
-
-    trace1 = scatter(;x=lags, y=data_weq[:, 1], mode="lines", linecolor="rgb(0,0,0)", name="Raw Data")
-    #addtraces!(p, trace1)
-    trace2 = scatter(;x=lags, y=data_neq[:, 1], mode="lines", linecolor="rgb(0,0,0)", name="Earthquakes Removed")
-    addtraces!(p, trace2)
+    trace1 = scatter(;x=lags, y=data[:, 1], mode="lines", linecolor="rgb(0,0,0)")
+    addtraces!(p, trace1)
     deletetraces!(p, 1)
     display(p)
     readline()
 end
 
-function plot_convergence()
-    finame_weq="../rms_weq_wol.jld2"
-    finame_neq="../rms_neq_wol.jld2"
-
-    fweq = jldopen(finame_weq)
-    fneq = jldopen(finame_neq)
-
-    stname = "BP.CCRB..BP1.BP.EADB..BP1"
+function plot_convergence(finame::String, stn1::String, stn2::String)
+    f = jldopen(finame)
+    stname = stn1*"."*stn2
+    data = f[stname]
 
     lags = -100.0:1/20.0:100.0
-    data_weq = fweq[stname]
-    data_neq = fneq[stname]
 
     # set up plot
     layout = Layout(width=1200, height=800,
-                    xaxis_title="Stacked cross-correlations",
-                    font =attr(size=18),
+                    xaxis_title="# of stacked cross-correlations",
+                    font=attr(size=18),
                     showlegend=true,
-                    title="$stname")
+                    title="$stname convergence")
 
     p = PlotlyJS.plot([NaN], layout)
 
-    trace1 = scatter(;x=1:length(data_weq), y=data_weq, mode="lines", linecolor="rgb(0,0,0)", name="Raw Data")
+    trace1 = scatter(;x=1:length(data), y=data, mode="lines", linecolor="rgb(0,0,0)")
     addtraces!(p, trace1)
-    trace2 = scatter(;x=1:length(data_weq), y=data_neq, mode="lines", linecolor="rgb(0,0,0)", name="Earthquakes Removed")
-    #addtraces!(p, trace2)
     deletetraces!(p, 1)
     display(p)
     readline()
