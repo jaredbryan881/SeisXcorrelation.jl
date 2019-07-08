@@ -1,12 +1,12 @@
-using SeisIO, SeisNoise, JLD2, PlotlyJS, StatsBase, Sockets
+using SeisIO, SeisNoise, JLD2, PlotlyJS, StatsBase, Sockets, ORCA
 
-function plot_seismograms(finame::String, stn::String; sparse::Int64=1)
+function plot_seismograms(finame::String, stn::String; sparse::Int64=1, foname::String="", show::Bool=true)
     f = jldopen(finame)
     timestamplist = f["info/DLtimestamplist"]
 
     # set up plot
     layout = Layout(width=1200, height=800,
-                    xaxis_title="Lags [s]",
+                    xaxis_title="Time [s]",
                     yaxis_title="Days",
                     font=attr(size=18),
                     showlegend=true,
@@ -14,7 +14,8 @@ function plot_seismograms(finame::String, stn::String; sparse::Int64=1)
     p = PlotlyJS.plot([NaN], layout)
 
     for (titer, time) in enumerate(timestamplist)
-        ts = f["$time/$stn"][1]
+        ts = f["$time/$stn"]
+        if typeof(ts)==SeisData ts=ts[1] end
 
         taxis = collect(0:length(ts.x)-1) ./ ts.fs
         norm_factor = maximum(ts.x)
@@ -22,13 +23,18 @@ function plot_seismograms(finame::String, stn::String; sparse::Int64=1)
         addtraces!(p, trace)
     end
     deletetraces!(p, 1)
-    display(p)
+    if foname !== ""
+        savefig(p, foname)
+    end
+    if show == true
+        display(p)
+    end
     readline()
 
     close(f)
 end
 
-function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type="wiggles", maxlag=100.0, dt=0.05)
+function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::String="wiggles", maxlag::Float64=100.0, dt::Float64=0.05, foname::String="", show::Bool=true)
     f = jldopen(basefiname*".jld2")
     timestamplist = f["info/timestamplist"]
 
@@ -52,7 +58,6 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type="wiggl
             stack!(xcorr, allstack=true)
             xcorr
         catch y;
-            println("reversing at: $time")
             xcorr = f_cur["$time/$stnpairrev"]
             stack!(xcorr, allstack=true)
             xcorr.corr = reverse(xcorr.corr, dims=1)
@@ -84,7 +89,12 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type="wiggl
         addtraces!(p, trace)
     end
     deletetraces!(p, 1)
-    display(p)
+    if foname !== ""
+        savefig(p, foname)
+    end
+    if show == true
+        display(p)
+    end
     readline()
 
     close(f)
