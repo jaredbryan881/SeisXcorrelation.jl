@@ -72,8 +72,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
         # read station SeisChannels into SeisData before FFT
         S1 = SeisData(data["$tstamp/$stn1"])
         if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
-        try delete!(S1[1].misc, "kurtosis") catch; end
-        try delete!(S1[1].misc, "eqtimewindow") catch; end
+        delete!(S1[1].misc, "kurtosis")
+        delete!(S1[1].misc, "eqtimewindow")
 
         # do not attempt fft if data was not available
         try
@@ -123,8 +123,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 # read station SeisChannels into SeisData before FFT
                 S2 = SeisData(data["$tstamp/$stn2"])
                 if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
-                try delete!(S2[1].misc, "kurtosis") catch; end
-                try delete!(S2[1].misc, "eqtimewindow") catch; end
+                delete!(S2[1].misc, "kurtosis")
+                delete!(S2[1].misc, "eqtimewindow")
 
                 # do not attempt fft if data was not available
                 try
@@ -186,9 +186,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
         delete!(FFTDict, stn1)
         delete!(data, "$tstamp/$stn1")
     end
-
+    outFile["errors"] = tserrorList
     close(outFile)
-    return tserrorList
 end
 
 """
@@ -355,9 +354,8 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
 
         pairiter += 1
     end
+    outFile["erorrs"] = tserrorList
     close(outFile)
-
-    return tserrorList
 end
 
 #end # module

@@ -5,13 +5,13 @@ include("../../src/pairing.jl")
 include("../../src/utils.jl")
 
 # input parameters
-InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/data/seismic/BPnetwork_Jan03_neq.jld2",
+InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/data/seismic/BPnetwork_Jan03.jld2",
                   "timeunit"   => 86400,
-                  "basefoname" => "./testData/BPnetwork_Jan03_xcorrs",
-                  "maxReadNum" => 6,
+                  "basefoname" => "/Users/jared/SCECintern2019/data/xcorrs/BPnetwork_Jan03_weq_xcorrs",
+                  "maxReadNum" => 8,
                   "freqmin"    => 0.1,
-                  "freqmax"    => 2.4,
-                  "fs"         => 5.0,
+                  "freqmax"    => 9.9,
+                  "fs"         => 20.0,
                   "cc_len"     => 3600,
                   "cc_step"    => 1800,
                   "corrtype"   => ["acorr", "xchancorr", "xcorr"],
@@ -34,7 +34,6 @@ jldopen("$(InputDict["basefoname"]).jld2", "w") do file
     file["info/timestamplist"]   = tstamplist;
     file["info/stationlist"]     = stlist;
     file["info/corrstationlist"] = sorted_pairs;
-    file["info/tserrors"]        = []
 end
 
 st=time()
@@ -44,8 +43,7 @@ for win in mapWindows
     # load timesteps into array of dicts [Dict(ts/stn=>data for stn in stlist) for ts in tslist]
     dsets = read_JLD22Dict(data, tstamplist[win])
     # map seisxcorrelation over timesteps
-    errors = pmap((x,y)->seisxcorrelation(x, y, InputDict), dsets, tstamplist[win])
-    #TODO: write tserrors to basefile
+    pmap((x,y)->seisxcorrelation(x, y, InputDict), dsets, tstamplist[win])
 end
 et=time()
 close(data)
