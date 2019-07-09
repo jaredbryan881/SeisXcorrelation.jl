@@ -34,7 +34,7 @@ function plot_seismograms(finame::String, stn::String; sparse::Int64=1, foname::
     close(f)
 end
 
-function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::String="wiggles", maxlag::Float64=100.0, dt::Float64=0.05, foname::String="", show::Bool=true)
+function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::String="wiggles", foname::String="", show::Bool=true)
     f = jldopen(basefiname*".jld2")
     timestamplist = f["info/timestamplist"]
 
@@ -66,7 +66,7 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
             continue
         end
 
-        lags = -xcorr.maxlag:1/xcorr.fs:xcorr.maxlag
+        global lags = -xcorr.maxlag:1/xcorr.fs:xcorr.maxlag
 
         norm_factor = maximum(xcorr.corr[:])
 
@@ -86,7 +86,6 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
     end
 
     if type=="heatmap"
-        lags = -maxlag:dt:maxlag
         xcorr_heat = reshape(xcorr_heat, convert(Int64, length(xcorr_heat)/length(timestamplist)), length(timestamplist))
         trace = PlotlyJS.heatmap(x=lags, z=xcorr_heat)
         addtraces!(p, trace)
