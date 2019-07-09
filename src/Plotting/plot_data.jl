@@ -7,9 +7,9 @@ function plot_seismograms(finame::String, stn::String; sparse::Int64=1, foname::
     # set up plot
     layout = Layout(width=1200, height=800,
                     xaxis_title="Time [s]",
-                    yaxis_title="Days",
+                    yaxis_title="Days since $(timestamplist[1])",
                     font=attr(size=18),
-                    showlegend=true,
+                    showlegend=false,
                     title="$stn")
     p = PlotlyJS.plot([NaN], layout)
 
@@ -19,7 +19,7 @@ function plot_seismograms(finame::String, stn::String; sparse::Int64=1, foname::
 
         taxis = collect(0:length(ts.x)-1) ./ ts.fs
         norm_factor = maximum(ts.x)
-        trace = scatter(;x=taxis[1:sparse:end], y=((ts.x ./ norm_factor) .+ titer .- 1)[1:sparse:end], mode="lines", linecolor="rgb(0,0,0)", name="$time")
+        trace = scatter(;x=taxis[1:sparse:end], y=((ts.x ./ norm_factor) .+ titer .- 1)[1:sparse:end], mode="lines", line_color="rgb(0,0,0)", name=time)
         addtraces!(p, trace)
     end
     deletetraces!(p, 1)
@@ -41,8 +41,9 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
     # set up plot
     layout = Layout(width=1200, height=800,
                     xaxis_title="Lags [s]",
+                    yaxis_title="Days since $(timestamplist[1])",
                     font=attr(size=18),
-                    showlegend=true,
+                    showlegend=false,
                     title="$stn1.$stn2")
     p = PlotlyJS.plot([NaN], layout)
 
@@ -64,14 +65,14 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
         else
             continue
         end
-        
+
         lags = -xcorr.maxlag:1/xcorr.fs:xcorr.maxlag
 
         norm_factor = maximum(xcorr.corr[:])
 
         try
             if type=="wiggles"
-                trace = scatter(;x=lags, y=xcorr.corr[:,1] ./ (2 * norm_factor) .+ titer .- 1, mode="lines", linecolor="rgb(0,0,0)", name="$time")
+                trace = scatter(;x=lags, y=xcorr.corr[:,1] ./ (2 * norm_factor) .+ titer .- 1, mode="lines", line_color="rgb(0,0,0)", name=time)
                 addtraces!(p, trace)
             elseif type=="heatmap"
                 append!(xcorr_heat, xcorr.corr[:, 1]./ (norm_factor))
@@ -117,7 +118,7 @@ function plot_reference(finame::String, stn1::String, stn2::String)
                     title="$stname")
 
     p = PlotlyJS.plot([NaN], layout)
-    trace1 = scatter(;x=lags, y=data[:, 1], mode="lines", linecolor="rgb(0,0,0)")
+    trace1 = scatter(;x=lags, y=data[:, 1], mode="lines", line_color="rgb(0,0,0)")
     addtraces!(p, trace1)
     deletetraces!(p, 1)
     display(p)
@@ -140,7 +141,7 @@ function plot_convergence(finame::String, stn1::String, stn2::String)
 
     p = PlotlyJS.plot([NaN], layout)
 
-    trace1 = scatter(;x=1:length(data), y=data, mode="lines", linecolor="rgb(0,0,0)")
+    trace1 = scatter(;x=1:length(data), y=data, mode="lines", line_color="rgb(0,0,0)")
     addtraces!(p, trace1)
     deletetraces!(p, 1)
     display(p)
