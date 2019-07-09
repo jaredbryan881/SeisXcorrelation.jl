@@ -53,16 +53,18 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
 
     for (titer, time) in enumerate(timestamplist)
         f_cur = jldopen(basefiname*".$time.jld2")
-        xcorr = try
+
+        if stnpair ∈ keys(f_cur[time])
             xcorr = f_cur["$time/$stnpair"]
             stack!(xcorr, allstack=true)
-            xcorr
-        catch y;
+        elseif stnpairrev ∈ keys(f_cur[time])
             xcorr = f_cur["$time/$stnpairrev"]
             stack!(xcorr, allstack=true)
             xcorr.corr = reverse(xcorr.corr, dims=1)
-            xcorr
+        else
+            continue
         end
+        
         lags = -xcorr.maxlag:1/xcorr.fs:xcorr.maxlag
 
         norm_factor = maximum(xcorr.corr[:])
