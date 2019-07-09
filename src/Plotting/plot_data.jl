@@ -1,11 +1,12 @@
 using SeisIO, SeisNoise, JLD2, PlotlyJS, StatsBase, Sockets, ORCA
 
-function plot_seismograms(finame::String, stn::String; sparse::Int64=1, foname::String="", show::Bool=true)
+function plot_seismograms(finame::String, stn::String; norm_factor=nothing, sparse::Int64=1, foname::String="", show::Bool=true)
     f = jldopen(finame)
     timestamplist = f["info/DLtimestamplist"]
+    timestamplist=timestamplist[1:end-1]
 
     # set up plot
-    layout = Layout(width=1200, height=800,
+    layout = Layout(width=1200, height=1500,
                     xaxis_title="Time [s]",
                     yaxis_title="Days since $(timestamplist[1])",
                     font=attr(size=18),
@@ -18,7 +19,11 @@ function plot_seismograms(finame::String, stn::String; sparse::Int64=1, foname::
         if typeof(ts)==SeisData ts=ts[1] end
 
         taxis = collect(0:length(ts.x)-1) ./ ts.fs
-        norm_factor = maximum(ts.x)
+
+        if norm_factor == nothing
+            norm_factor = maximum(ts.x)
+        end
+
         trace = scatter(;x=taxis[1:sparse:end], y=((ts.x ./ norm_factor) .+ titer .- 1)[1:sparse:end], mode="lines", line_color="rgb(0,0,0)", name=time)
         addtraces!(p, trace)
     end
@@ -50,7 +55,7 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
     stnpair = stn1*"."*stn2
     stnpairrev = stn2*"."*stn1
 
-    if type=="heatmap" xcorr_heat = [] end
+    if type=="heatmap" xcorr_heat = []; tscounter=0 end
 
     for (titer, time) in enumerate(timestamplist)
         f_cur = jldopen(basefiname*".$time.jld2")
@@ -72,10 +77,11 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
 
         try
             if type=="wiggles"
-                trace = scatter(;x=lags, y=xcorr.corr[:,1] ./ (2 * norm_factor) .+ titer .- 1, mode="lines", line_color="rgb(0,0,0)", name=time)
+                trace = scatter(;x=lags, y=xcorr.corr[:,1] ./ (2 * norm_factor) .+ titer .- 1, mode="lines", line_color="black", name=time)
                 addtraces!(p, trace)
             elseif type=="heatmap"
                 append!(xcorr_heat, xcorr.corr[:, 1]./ (norm_factor))
+                tscounter+=1
             end
         catch y
             println(y)
@@ -86,7 +92,8 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; type::Strin
     end
 
     if type=="heatmap"
-        xcorr_heat = reshape(xcorr_heat, convert(Int64, length(xcorr_heat)/length(timestamplist)), length(timestamplist))
+        if tscounter==0 println("No cross-correlations to plot. Exiting."); exit() end
+        xcorr_heat = reshape(xcorr_heat, convert(Int64, length(xcorr_heat)/tscounter), tscounter)
         trace = PlotlyJS.heatmap(x=lags, z=xcorr_heat)
         addtraces!(p, trace)
     end
