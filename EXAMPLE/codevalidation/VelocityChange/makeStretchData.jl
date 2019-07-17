@@ -90,14 +90,14 @@ Linearly stretch a given signal, u0, by some factor given by a homogenous relati
 
 # Output
 - `u1`::Array{Float64,1}    : Stretched signal
-- `st`::Array{Float64,1}    : Stretched time axis
+- `tvec`::Array{Float64,1}    : Unstretched time axis
 
 """
 function stretchData(u0::Union{Array{Float32,1},Array{Float64,1}}, dt::Float64, dvV::Float64; starttime::Float64=0.0, stloc::Float64=0.0, n::Float64=0.0, seed::Int64=66473)
-    tvec = collect(( 0:length(u0)-1) .* dt) .+ starttime
+    tvec = collect((0:length(u0)-1) .* dt) .+ starttime
     st = (tvec.-stloc) .* dvV
 
-    if (n != 0.0) st = addNoise(st, n) end
+    if (n != 0.0) addNoise!(st, n) end
 
     tvec2 = tvec .+ st
 
@@ -123,12 +123,13 @@ Add noise to an array by some given mulitple of the maximum value.
 - `signal`::Array{Float64,1}    : Signal with added noise
 
 """
-function addNoise!(signal::Union{Array{Float32,1},Array{Float64,1}}, level::Float64; seed::Int64=66473, freqmin::Float64=0.1, freqmax::Float64=9.99, fs=20.0, corners::Int64=4, zerophase::Bool=false)
+function addNoise!(signal::Union{Array{Float32,1},Array{Float64,1}}, level::Float64; percent::Bool=true, seed::Int64=66473, freqmin::Float64=0.1, freqmax::Float64=9.99, fs=20.0, corners::Int64=4, zerophase::Bool=false)
     rng = MersenneTwister(seed)
     noise = randn(rng, Float64, length(signal))
     bandpass!(noise, freqmin, freqmax, fs, corners=corners, zerophase=zerophase)
     noise ./= maximum(abs.(noise)) # normalize noise
-    noise .*= (level*maximum(abs.(signal))) # scale noise by decimal percent of signal amplitude
+    noise .*= level # scale noise to given level 
+    if percent noise .*= maximum(abs.(signal)) end
     signal .+= noise
 
     return nothing
