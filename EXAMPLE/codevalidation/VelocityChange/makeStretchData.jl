@@ -1,6 +1,6 @@
-export generateSignal, stretchData, addNoise
+export generateSignal, stretchData, addNoise, addNoise!
 
-using Random, DSP, Dierckx, FileIO, JLD2
+using Random, DSP, Dierckx, FileIO, JLD2, SeisIO
 
 include("waves.jl")
 
@@ -54,10 +54,21 @@ function generateSignal(type::String; params::Dict{String,Real}=Dict(), sparse::
         η    = params["η"]    # shift in function maximum
         λ    = params["λ"]    # decay constant for the exponential decay
         dt   = params["dt"]   # sampling interval
-        t0   = params["t0"]   # leftmost time
+        t0   = params["t0"]   # start time
         npts = params["npts"] # number of points in the generated signal
 
         u0, t = dampedSinusoid(A=A, ω=ω, ϕ=ϕ, η=η, n=npts, dt=dt, t0=t0, λ=λ)
+
+    elseif type=="sinc"
+        # unpack parameters
+        A = params["A"]
+        ω    = params["ω"]    # angular frequency of the sinusoid
+        ϕ    = params["ϕ"]    # phase shift for the sinusoid
+        dt   = params["dt"]   # sampling interval
+        t0   = params["t0"]   # start time
+        npts = params["npts"] # number of points in the generated signal
+
+        u0, t = sinc(A=A, ω=ω, ϕ=ϕ, dt=dt, t0=t0, n=npts)
     end
 
     return u0, t
@@ -99,7 +110,7 @@ end
 
 """
 
-    addNoise(signal::Array{Float64,1}, level::Float64; seed::Int64=66743)
+    addNoise!(signal::Array{Float64,1}, level::Float64; seed::Int64=66743)
 
 Add noise to an array by some given mulitple of the maximum value.
 
@@ -112,11 +123,18 @@ Add noise to an array by some given mulitple of the maximum value.
 - `signal`::Array{Float64,1}    : Signal with added noise
 
 """
-function addNoise(signal::Array{Float64,1}, level::Float64; seed::Int64=66473)
+function addNoise!(signal::Union{Array{Float32,1},Array{Float64,1}}, level::Float64; seed::Int64=66473, freqmin::Float64=0.1, freqmax::Float64=9.99, fs=20.0, corners::Int64=4, zerophase::Bool=false)
     rng = MersenneTwister(seed)
     noise = randn(rng, Float64, length(signal))
-    noise = level * maximum(abs.(signal)).*(noise./maximum(abs.(signal)))
-    signal = signal .+ noise
+    bandpass!(noise, freqmin, freqmax, fs, corners=corners, zerophase=zerophase)
+    noise ./= maximum(abs.(noise)) # normalize noise
+    noise .*= (level*maximum(abs.(signal))) # scale noise by decimal percent of signal amplitude
+    signal .+= noise
 
-    return signal
+    return nothing
 end
+addNoise(signal::Union{Array{Float32,1},Array{Float64,1}}, level::Float64;
+         seed::Int64=66473, freqmin::Float64=0.1, freqmax::Float64=9.99, fs=20.0,
+         corners::Int64=4, zerophase::Bool=false) = (U = deepcopy(signal);
+         addNoise!(U, level, seed=seed, freqmin=freqmin, freqmax=freqmax, fs=fs,
+         corners=corners, zerophase=zerophase); return U)
