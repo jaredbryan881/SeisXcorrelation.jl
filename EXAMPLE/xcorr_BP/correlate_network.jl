@@ -5,19 +5,20 @@ include("../../src/pairing.jl")
 include("../../src/utils.jl")
 
 # input parameters
-InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/data/seismic/BPnetwork_Jan03.jld2",
-                  "timeunit"   => 86400,
-                  "basefoname" => "/Users/jared/SCECintern2019/data/xcorrs/BPnetwork_Jan03_weq_xcorrs",
-                  "maxReadNum" => 8,
+InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/data/seismic/BPnetwork_Jan03_staltakurt_1.5_3.0.jld2",
+                  "timeunit"   => 86400,     # unit of time xcorrs are saved in. DL_time_unit if SeisDownload was used
+                  "basefoname" => "/Users/jared/SCECintern2019/data/xcorrs/BPnetwork_Jan03_xcorrs_1.5_3.0",
+                  "maxReadNum" => 9,         # number of processes to read from JLD2 to dict and map over
                   "freqmin"    => 0.1,
-                  "freqmax"    => 9.9,
+                  "freqmax"    => 9.99,
                   "fs"         => 20.0,
                   "cc_len"     => 3600,
                   "cc_step"    => 1800,
                   "corrtype"   => ["acorr", "xchancorr", "xcorr"],
-                  "corrorder"  => 1,
                   "maxtimelag" => 100.0,
-                  "allstack"   => true)
+                  "to_whiten"  => true,      # true, false
+                  "time_norm"  => "one-bit", # false, phase, or one-bit
+                  "allstack"   => false)     # for now, only stacking over DL_time_unit is supported pre-save
 
 # read data from JLD2
 data = jldopen(InputDict["finame"])
@@ -25,9 +26,9 @@ data = jldopen(InputDict["finame"])
 stlist = data["info/stationlist"]
 tstamplist = data["info/DLtimestamplist"]
 
-station_pairs = generate_pairs(stlist)
+station_pairs = generate_pairs(stlist) # array
 # sort station pairs into autocorr, xcorr, and xchancorr
-sorted_pairs = sort_pairs(station_pairs)
+sorted_pairs = sort_pairs(station_pairs) # dict
 
 # create base output file with network, station, and pairing info
 jldopen("$(InputDict["basefoname"]).jld2", "w") do file

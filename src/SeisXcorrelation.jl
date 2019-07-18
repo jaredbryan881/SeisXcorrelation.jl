@@ -1,7 +1,7 @@
 __precompile__()
 #module SeisXcorrelation
 
-using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, PlotlyJS, Sockets, ORCA
+using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, Sockets, ORCA
 
 include("pairing.jl")
 include("fft.jl")
@@ -39,6 +39,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     fs         = InputDict["fs"]
     cc_len     = InputDict["cc_len"]
     cc_step    = InputDict["cc_step"]
+    to_whiten  = InputDict["to_whiten"]
+    time_norm  = InputDict["time_norm"]
     # correlation parameters
     corrtype   = InputDict["corrtype"]
     maxtimelag = InputDict["maxtimelag"]
@@ -56,7 +58,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     # split dataset names (keys of data) by "/" to get station list
     # assume form "$tstamp/$station"
     dsk = collect(keys(data))
-    stlist = [string(split.(dsk[i], "/")[2]) for i=1:length(dsk)]
+    stlist = sort([string(split.(dsk[i], "/")[2]) for i=1:length(dsk)])
 
     # create output file for each time stamp, fill relevant info
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
@@ -95,7 +97,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             if stn1 in keys(FFTDict)
                 FFTDict[stn1]
             else
-                FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len)
+                FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len, to_whiten=to_whiten, time_norm=time_norm)
                 FFTDict[stn1] = FFT1
                 FFT1
             end
@@ -134,7 +136,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                         println("$tstamp: $stn2 encountered an error. Skipping.")
                         continue
                     end
-                catch
+                catch;
+
                 end
 
                 # make sure the data is the proper length to avoid dimension mismatch
@@ -146,7 +149,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                     if stn2 in keys(FFTDict)
                         FFTDict[stn2]
                     else
-                        FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len)
+                        FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len, to_whiten=to_whiten, time_norm=time_norm)
                         FFTDict[stn2] = FFT2
                         FFT2
                     end
@@ -186,7 +189,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
         delete!(FFTDict, stn1)
         delete!(data, "$tstamp/$stn1")
     end
-    outFile["errors"] = tserrorList
+    outFile["info/errors"] = tserrorList
     close(outFile)
 end
 
