@@ -24,7 +24,7 @@ Generate a signal of type "ricker" or "dampedSinusoid".
 - `t`::Array{Float64,1}    : Time axis
 
 """
-function generateSignal(type::String; params::Dict{String,Real}=Dict(), sparse::Int64=0, seed::Int64=66473)
+function generateSignal(type::String, params::Dict{String,Real}; sparse::Int64=0, seed::Int64=66473)
     if type=="ricker"
         # unpack parameters
         f    = params["f"]    # peak frequency
@@ -61,7 +61,7 @@ function generateSignal(type::String; params::Dict{String,Real}=Dict(), sparse::
 
     elseif type=="sinc"
         # unpack parameters
-        A = params["A"]
+        A    = params["A"]
         ω    = params["ω"]    # angular frequency of the sinusoid
         ϕ    = params["ϕ"]    # phase shift for the sinusoid
         dt   = params["dt"]   # sampling interval
@@ -69,6 +69,19 @@ function generateSignal(type::String; params::Dict{String,Real}=Dict(), sparse::
         npts = params["npts"] # number of points in the generated signal
 
         u0, t = sinc(A=A, ω=ω, ϕ=ϕ, dt=dt, t0=t0, n=npts)
+
+    elseif type=="chirp"
+        # unpack parameters
+        c     = params["c"]     # phase velocity
+        tp    = params["tp"]    # period
+        mintp = params["mintp"] # minimum period
+        maxtp = params["maxtp"] # maximum period
+        dist  = params["dist"]  # distance
+        npts  = params["npts"]  # number of points in the generated signal
+        dt    = params["dt"]    # sampling interval
+        t0    = params["t0"]    # start time
+
+        u0, t = chirp(c=c, tp=tp, mintp=mintp, maxtp=maxtp, dist=dist, n=npts, dt=dt, t0=t0)
     end
 
     return u0, t
@@ -128,7 +141,7 @@ function addNoise!(signal::Union{Array{Float32,1},Array{Float64,1}}, level::Floa
     noise = randn(rng, Float64, length(signal))
     bandpass!(noise, freqmin, freqmax, fs, corners=corners, zerophase=zerophase)
     noise ./= maximum(abs.(noise)) # normalize noise
-    noise .*= level # scale noise to given level 
+    noise .*= level # scale noise to given level
     if percent noise .*= maximum(abs.(signal)) end
     signal .+= noise
 

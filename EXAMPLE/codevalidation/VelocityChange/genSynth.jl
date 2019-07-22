@@ -44,6 +44,15 @@ rickerParams = Dict( "f"     => 0.25,
                      "npr"   => 4001,
                      "npts"  => 4001)
 
+chirpParams = Dict( "c"     => collect(range(0.15, stop=15.0, length=100)),
+                    "tp"    => collect(range(0.04, stop=4.0, length=100)),
+                    "mintp" => 0.04,
+                    "maxtp" => 4.0,
+                    "dist"  => 1000.0,
+                    "n"     => 500,
+                    "dt"    => 0.002,
+                    "t0"    => 0.0)
+
 lags = -real_xcorr.maxlag:1/real_xcorr.fs:real_xcorr.maxlag
 
 for dvV in dvVlist
