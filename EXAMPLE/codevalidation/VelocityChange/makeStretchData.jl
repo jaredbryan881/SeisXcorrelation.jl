@@ -1,6 +1,6 @@
 export generateSignal, stretchData, addNoise, addNoise!
 
-using Random, DSP, Dierckx, FileIO, JLD2, SeisIO
+using Random, DSP, Dierckx, FileIO, JLD2, SeisIO, PlotlyJS
 
 include("waves.jl")
 
@@ -31,6 +31,7 @@ function generateSignal(type::String, params::Dict{String,Real}; sparse::Int64=0
         dt   = params["dt"]   # sampling interval
         npr  = params["npr"]  # number of points in the Ricker wavelet
         npts = params["npts"] # number of points in the generated signal
+        m    = params["m"]    # power for reflectivity series
 
         # generate a ricker wavelet
         (w, t) = ricker(f=f, n=npr, dt=dt)
@@ -38,13 +39,17 @@ function generateSignal(type::String, params::Dict{String,Real}; sparse::Int64=0
         # generate a random reflectivity series
         rng = MersenneTwister(seed)
         f = randn(rng, Float64, npts)
+
         if sparse!=0
             r=collect(1:npts)
             f[r .% sparse .!= 0] .= 0
         end
+        # raise output from randn to an integral power. See <<Numerical Methods of
+        # Explorational Seismology>> page 77.
+        f = sign.(f) .* abs.(f).^m
 
         # convolve reflectivity series with ricker wavelet
-        u0 = conv(f,w)[1:npts]
+        u0 = conv(f,w)[convert(Int64, npts-floor(npts/2)):convert(Int64, npts+floor(npts/2))]
 
     elseif type=="dampedSinusoid"
         # unpack parameters

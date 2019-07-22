@@ -16,11 +16,11 @@ Generate a Ricker wavelet.
 - `t`::Array{Float64,1}    : Time axis
 
 """
-function ricker(;f::Float64=20.0, n::Int64=41, dt::Float64=0.05)
-    # Create the wavelet
+function ricker(;f::Float64=20.0, n::Int64=41, dt::Float64=0.05, tpoint::Float64=100.0)
+    # generate time axis
     t = timeAxis(dt, 0., n)
-    tau = t .- 1/f
-    s = (1.0 .- tau.*tau.*f.^2*π.^2).*exp.(-tau.^2*π.^2*f.^2);
+    # create the wavelet
+    s = (1.0 .- 2π^2 * f^2 .* (t.-tpoint).^2).*exp.(-π^2 * f^2 .* (t.-tpoint).^2)
 
     return (s, t)
 end
