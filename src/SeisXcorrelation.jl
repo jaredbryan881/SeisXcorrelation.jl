@@ -166,7 +166,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             end
 
             # compute correlation using Noise.jl -- returns type CorrData
-            xcorr = compute_cc(FFT1, FFT2, maxtimelag)
+            xcorr = compute_cc(FFT2, FFT1, maxtimelag)
             # compute distance between stations
             xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
             # save location of each station
@@ -334,7 +334,7 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
             end
 
             #compute xcorr - 1st half of dim=2 is neg lag, 2nd half is pos lag
-            xcorr_c3 = compute_cc_c3(FFT1, FFT2, maxtimelag)
+            xcorr_c3 = compute_cc_c3(FFT2, FFT1, maxtimelag)
             xcorr_c3.name = "$stn1.$stn2.$virt_src"
 
             # save cross-correlation
