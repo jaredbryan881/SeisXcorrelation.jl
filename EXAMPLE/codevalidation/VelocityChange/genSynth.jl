@@ -3,7 +3,7 @@ include("../../../src/utils.jl")
 
 using PlotlyJS, SeisIO, SeisNoise, JLD2
 
-foname="verificationData.jld2"
+foname="/Users/jared/SCECintern2019/data/validation/verificationData.jld2"
 
 types = ["dampedSinusoid", "rickerConv", "realData"]
 
@@ -11,12 +11,12 @@ finame_xcorr="/Users/jared/SCECintern2019/data/reference/BPnetwork_Jan03_nowhite
 dataset_xcorr="BP.CCRB..BP1.BP.SMNB..BP1"
 xcf=jldopen(finame_xcorr)
 real_xcorr=xcf[dataset_xcorr]
-save=false
-plot=true
+save=true
+plot=false
 
 if size(real_xcorr.corr)[2]>1 stack!(real_xcorr, allstack=true) end
 
-dvVlist = collect(-0.03:0.01:0.03)
+dvVlist = collect(-0.03:0.005:0.03)
 noiselist = collect(0:0.01:0.1)
 
 if save
@@ -93,9 +93,12 @@ for dvV in dvVlist
         end
 
         if save
-            f["dampedSinusoid/$dvV.$noiselvl"] = [signal1_ds, signal2_ds]
-            f["rickerConv/$dvV.$noiselvl"] = [signal1_rc, signal2_rc]
-            f["realData/$dvV.$noiselvl"] = [xcorr, stretch_xcorr]
+            f["dampedSinusoid/$dvV.$noiselvl/ref"] = signal1_ds
+            f["dampedSinusoid/$dvV.$noiselvl/cur"] = signal2_ds
+            f["rickerConv/$dvV.$noiselvl/ref"] = signal1_rc
+            f["rickerConv/$dvV.$noiselvl/cur"] = signal2_rc
+            f["realData/$dvV.$noiselvl/ref"] = xcorr
+            f["realData/$dvV.$noiselvl/cur"] = stretch_xcorr
         end
 
         if plot

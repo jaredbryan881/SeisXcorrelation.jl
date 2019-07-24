@@ -9,15 +9,18 @@ function testStretching(finame::String, foname::String, InputDict::Dict, windowl
     noiselist = valData["info/noiselist"]
 
     f_err = jldopen(foname, "a+")
-    f_err["info/dvV"] = dvVlist
-    f_err["info/noise"] = noiselist
+    if type == "realData"
+        f_err["info/dvV"] = dvVlist
+        f_err["info/noise"] = noiselist
+    end
 
-    for dvV in dvVlist[1:5:end]
+    for dvV in dvVlist
         println("dv/v: $dvV")
-        for noiselvl in noiselist[:]
+        for noiselvl in noiselist
             for win_len in windowlenlist, win_step in windowsteplist
                 signals = valData["$type/$dvV.$noiselvl"]
-                (ref, cur) = signals
+                ref = signals["ref"]
+                cur = signals["cur"]
 
                 time_axis = collect(InputDict["mintimelag"]:1/InputDict["fs"]:InputDict["mintimelag"]+InputDict["dtt_width"])
 
@@ -53,7 +56,7 @@ function testStretching(finame::String, foname::String, InputDict::Dict, windowl
                 comp_dvV = sum(dv_list)/N
                 comp_err = sum(err_list)/N
 
-                f_err["$type/$dvV.$noiselvl"] = comp_err
+                f_err["$type/$dvV.$noiselvl"] = [comp_dvV, comp_err]
             end
         end
     end
@@ -63,21 +66,21 @@ end
 
 # MWCS input parameters
 InputDict_real = Dict( "freqmin"    => 0.1,
-                       "freqmax"    => 9.9,
+                       "freqmax"    => 9.99,
                        "fs"         => 20.0,
                        "mintimelag" => -100.0,
                        "dtt_width"  => 200.0,
-                       "dvmin"      => -0.03,
-                       "dvmax"      => 0.03,
+                       "dvmin"      => -0.04,
+                       "dvmax"      => 0.04,
                        "ntrial"     => 100 )
 
 InputDict_synth = Dict( "freqmin"    => 0.1,
-                        "freqmax"    => 9.9,
+                        "freqmax"    => 9.99,
                         "fs"         => 20.0,
                         "mintimelag" => 0.0,
                         "dtt_width"  => 200.0,
-                        "dvmin"      => -0.03,
-                        "dvmax"      => 0.03,
+                        "dvmin"      => -0.04,
+                        "dvmax"      => 0.04,
                         "ntrial"     => 100 )
 
 finame = "verificationData.jld2"
@@ -86,4 +89,11 @@ windowlenlist = [200.0]
 windowsteplist = [0.0]
 type = "rickerConv"
 
-testStretching(finame, foname, InputDict_synth, windowlenlist, windowsteplist, type)
+for type in ["rickerConv", "dampedSinusoid", "realData"]
+    if type == "realData"
+        InputDict = InputDict_real
+    else
+        InputDict = InputDict_synth
+    end
+    testStretching(finame, foname, InputDict, windowlenlist, windowsteplist, type)
+end
