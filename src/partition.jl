@@ -16,12 +16,13 @@ Partition an array into two sub-arrays, centered on the midpoint.
 """
 function partition(A::Array{Float32,2}, offset::Int64, size::Int64)
     # midpoint of the array
-    zerolag = convert(Int64, (length(A)+1)/2)
+    zerolag = convert(Int64, (length(A[:,1])+1)/2)
     # define windows
     pos_win = zerolag+offset:zerolag+offset+size
     neg_win = zerolag-offset-size:zerolag-offset
     # stack subarrays
     A = hcat(A[neg_win], A[pos_win])
+
     return A
 end
 

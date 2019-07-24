@@ -230,7 +230,7 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
     pairiter = 1 # counter to prevent computing duplicate xcorrs with reversed order
 
     # dictionary to cache FFTs
-    FFTDict = Dict{String, FFTData}()
+    FFTDict = Dict{String, Array{FFTData,1}}()
 
     # list of stations that failed for this timestep
     tserrorList = []
@@ -244,16 +244,19 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
     if typeof(win_len) == Float64
         win_len  = convert(Int64, win_len*fs)
     end
-
+    
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
     outFile["info/corrstationlist"] = xcorrlist
 
     println("$tstamp: Computing cross-correlations")
     for p1=1:length(xcorrlist[1,:])
+        # first station pair name and its reverse
         pair1 = xcorrlist[:, p1]
         p1name = pair1[1]*"."*pair1[2]
         p1namerev = pair1[2]*"."*pair1[1]
+
         for p2=pairiter:length(xcorrlist[1,:])
+            # second station pair name
             pair2 = xcorrlist[:, p2]
             p2name = pair2[1]*"."*pair2[2]
 
@@ -279,7 +282,7 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
 
             # load FFT1 from dict if it exists
             if "$(virt_src)/$stn1" in keys(FFTDict)
-                FFT1 = FFTDict["$(virt_src)/$stn1"]
+                FFT1_neg, FFT1_pos = FFTDict["$(virt_src)/$stn1"]
             else
                 # load data and (optionally) reverse it to get virt_src-stn config
                 # copy struct to prevent in-place reversal from messing up future xcorrs
@@ -301,14 +304,14 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
                 xcorr1.corr = partition(xcorr1.corr, start_lag, win_len)
 
                 # compute FFT
-                FFT1 = compute_fft_c3(xcorr1, freqmin, freqmax, fs, cc_step, cc_len)
+                FFT1_neg, FFT1_pos = compute_fft_c3(xcorr1, freqmin, freqmax, fs, cc_step, cc_len)
 
-                FFTDict["$(virt_src)/$stn1"] = FFT1
+                FFTDict["$virt_src/$stn1"] = [FFT1_neg, FFT1_pos]
             end
 
             # load FFT2 from dict if it exists
             if "$virt_src/$stn2" in keys(FFTDict)
-                FFT2 = FFTDict["$virt_src/$stn2"]
+                FFT2_neg, FFT2_pos = FFTDict["$virt_src/$stn2"]
             else
                 # load data and (optionally) reverse it to get virt_src-stn config
                 # copy struct to prevent in-place reversal from messing up future xcorrs
@@ -321,26 +324,28 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
                     xcorr2.corr=reverse(xcorr2.corr, dims=1)
                     stn2_loc = xcorr2.misc["location"][pair2[1]]
                 else
-                    stn2_loc = xcorr2.misc["location"][pair1[2]]
+                    stn2_loc = xcorr2.misc["location"][pair2[2]]
                 end
 
                 # partition xcorr into positive and negative windows
                 xcorr2.corr = partition(xcorr2.corr, start_lag, win_len)
 
                 # compute FFT
-                FFT2 = compute_fft_c3(xcorr2, freqmin, freqmax, fs, cc_step, cc_len)
+                FFT2_neg, FFT2_pos = compute_fft_c3(xcorr2, freqmin, freqmax, fs, cc_step, cc_len)
 
-                FFTDict["$virt_src/$stn2"] = FFT2
+                FFTDict["$virt_src/$stn2"] = [FFT2_neg, FFT2_pos]
             end
 
             #compute xcorr - 1st half of dim=2 is neg lag, 2nd half is pos lag
-            xcorr_c3 = compute_cc_c3(FFT1, FFT2, maxtimelag)
-            xcorr_c3.name = "$stn1.$stn2.$virt_src"
+            xcorr_c3_neg = compute_cc_c3(FFT1_neg, FFT2_neg, maxtimelag)
+            xcorr_c3_neg.name = "$stn1.$stn2.$(virt_src)_neg"
+            xcorr_c3_pos = compute_cc_c3(FFT1_pos, FFT2_pos, maxtimelag)
+            xcorr_c3_pos.name = "$stn1.$stn2.$(virt_src)_pos"
 
             # save cross-correlation
             varname = "$tstamp/$stn1.$stn2/$virt_src"
             try
-                outFile[varname] = xcorr_c3
+                outFile[varname] = [xcorr_c3_neg, xcorr_c3_pos]
             catch
                 println("$varname encountered an error on saving to JLD2.")
                 push!(tserrorList, varname)
