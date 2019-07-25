@@ -36,6 +36,16 @@ function generateSignal(type::String, params::Dict{String,Real}; sparse::Int64=0
         # generate a ricker wavelet
         (w, t) = ricker(f=f, n=npr, dt=dt)
 
+        t1 = PlotlyJS.scatter(;x=t, y=w)
+
+        stretchSource = params["stretchSource"] # stretch source amplitude spectra by some value
+        if stretchSource != 0.0
+            spectrum = rfft(w)
+            stAmpSpec, st = stretchData(real(spectrum), dt, stretchSource)
+            spectrum = stAmpSpec .+ imag(spectrum).*im
+            w = irfft(spectrum, length(w))
+        end
+        
         # generate a random reflectivity series
         rng = MersenneTwister(seed)
         f = randn(rng, Float64, npts)

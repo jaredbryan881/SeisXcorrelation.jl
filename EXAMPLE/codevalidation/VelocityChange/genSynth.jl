@@ -46,7 +46,8 @@ rickerParams = Dict( "f"      => 0.25,
                      "npr"    => 4001,
                      "npts"   => 4001,
                      "m"      => 1,
-                     "sparse" => 0 )
+                     "sparse" => 0,
+                     "stretchSource" => 0.005 )
 
 chirpParams = Dict( "c"     => collect(range(0.15, stop=15.0, length=100)),
                     "tp"    => collect(range(0.04, stop=4.0, length=100)),
@@ -95,12 +96,6 @@ for dvV in dvVlist
 
             addNoise!(signal1_ss, noiselvl)
             addNoise!(signal2_ss, noiselvl, seed=664739)
-
-            t1=PlotlyJS.scatter(;x=t_ss, y=signal1_ss)
-            t2=PlotlyJS.scatter(;x=t_ss, y=signal2_ss)
-            p=PlotlyJS.plot([t1, t2])
-            display(p)
-            readline()
         end
 
         if "realData" in types
