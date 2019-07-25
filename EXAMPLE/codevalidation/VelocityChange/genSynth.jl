@@ -47,7 +47,7 @@ rickerParams = Dict( "f"      => 0.25,
                      "npts"   => 4001,
                      "m"      => 1,
                      "sparse" => 0,
-                     "stretchSource" => 0.005 )
+                     "stretchSource" => 0.2 )
 
 chirpParams = Dict( "c"     => collect(range(0.15, stop=15.0, length=100)),
                     "tp"    => collect(range(0.04, stop=4.0, length=100)),
@@ -80,9 +80,14 @@ for dvV in dvVlist
         if "rickerConv" in types
             # Example of ricker wavelet generation and convolution with random reflectivity
             # series, stretching, and noise addition
-            signal1_rc, t_rc = generateSignal("ricker", rickerParams, sparse=rickerParams["sparse"])
+            signal1_rc, t_rc = generateSignal("ricker", rickerParams, sparse=rickerParams["sparse"], stretchSource=0.0)
             normalize!(signal1_rc)
-            signal2_rc, st_rc = stretchData(signal1_rc, rickerParams["dt"], dvV, n=noiselvl)
+            if rickerParams["stretchSource"] != 0.0
+                inSignal, t_rc = generateSignal("ricker", rickerParams, sparse=rickerParams["sparse"], stretchSource=rickerParams["stretchSource"])
+            else
+                inSignal = signal1_rc
+            end
+            signal2_rc, st_rc = stretchData(inSignal, rickerParams["dt"], dvV, n=noiselvl)
 
             addNoise!(signal1_rc, noiselvl)
             addNoise!(signal2_rc, noiselvl, seed=664739)
