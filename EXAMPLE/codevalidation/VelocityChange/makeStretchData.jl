@@ -1,6 +1,6 @@
 export generateSignal, stretchData, addNoise, addNoise!
 
-using Random, DSP, Dierckx, FileIO, JLD2, SeisIO, PlotlyJS
+using Random, DSP, Dierckx, FileIO, JLD2, SeisIO, FFTW
 
 include("waves.jl")
 
@@ -87,6 +87,15 @@ function generateSignal(type::String, params::Dict{String,Real}; sparse::Int64=0
         t0    = params["t0"]    # start time
 
         u0, t = chirp(c=c, tp=tp, mintp=mintp, maxtp=maxtp, dist=dist, n=npts, dt=dt, t0=t0)
+
+    elseif type=="spectSynth"
+        # unpack parameters
+        A    = params["A"]
+        dt   = params["dt"]
+        t0   = params["t0"]
+        npts = params["npts"]
+
+        u0, t = spectSynth(A=A, dt=dt, t0=t0, n=npts)
     end
 
     return u0, t

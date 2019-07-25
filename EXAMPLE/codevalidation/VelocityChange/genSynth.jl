@@ -1,17 +1,17 @@
 include("makeStretchData.jl")
 include("../../../src/utils.jl")
 
-using PlotlyJS, SeisIO, SeisNoise, JLD2
+using PlotlyJS, SeisIO, SeisNoise, JLD2, FFTW
 
 foname="/Users/jared/SCECintern2019/data/validation/verificationData.jld2"
 
-types = ["dampedSinusoid", "rickerConv", "realData"]
+types = ["dampedSinusoid", "rickerConv", "realData", "spectSynth"]
 
 finame_xcorr="/Users/jared/SCECintern2019/data/reference/BPnetwork_Jan03_nowhiten_nonorm/BPnetwork_Jan03_1.5_3.0_ref.jld2"
 dataset_xcorr="BP.CCRB..BP1.BP.SMNB..BP1"
 xcf=jldopen(finame_xcorr)
 real_xcorr=xcf[dataset_xcorr]
-save=true
+save=false
 plot=false
 
 if size(real_xcorr.corr)[2]>1 stack!(real_xcorr, allstack=true) end
@@ -32,21 +32,21 @@ dampedSinParams = Dict( "A"    => 1.0,
                         "dt"   => 0.05,
                         "η"    => 0.0,
                         "t0"   => 0.0,
-                        "npts" => 4001)
+                        "npts" => 4001 )
 
 sincParams = Dict( "A"    => 1.0,
                    "ω"    => 0.1,
                    "ϕ"    => 0.0,
                    "dt"   => 0.05,
                    "t0"   => 0.0,
-                   "npts" => 4001)
+                   "npts" => 4001 )
 
 rickerParams = Dict( "f"      => 0.25,
                      "dt"     => 0.05,
                      "npr"    => 4001,
                      "npts"   => 4001,
                      "m"      => 1,
-                     "sparse" => 0)
+                     "sparse" => 0 )
 
 chirpParams = Dict( "c"     => collect(range(0.15, stop=15.0, length=100)),
                     "tp"    => collect(range(0.04, stop=4.0, length=100)),
@@ -55,7 +55,12 @@ chirpParams = Dict( "c"     => collect(range(0.15, stop=15.0, length=100)),
                     "dist"  => 1000.0,
                     "n"     => 500,
                     "dt"    => 0.002,
-                    "t0"    => 0.0)
+                    "t0"    => 0.0 )
+
+spectParams = Dict( "A"    => 1.0,
+                    "dt"   => 0.05,
+                    "npts" => 4001,
+                    "t0"   => 0.0 )
 
 lags = -real_xcorr.maxlag:1/real_xcorr.fs:real_xcorr.maxlag
 
@@ -80,6 +85,22 @@ for dvV in dvVlist
 
             addNoise!(signal1_rc, noiselvl)
             addNoise!(signal2_rc, noiselvl, seed=664739)
+        end
+
+        if "spectSynth" in types
+            # Example of synthetic generation in frequency domain and irfft to get into time domain
+            signal1_ss, t_ss = generateSignal("spectSynth", spectParams)
+            normalize!(signal1_ss)
+            signal2_ss, st_ss = stretchData(signal1_ss, spectParams["dt"], dvV, n=noiselvl)
+
+            addNoise!(signal1_ss, noiselvl)
+            addNoise!(signal2_ss, noiselvl, seed=664739)
+
+            t1=PlotlyJS.scatter(;x=t_ss, y=signal1_ss)
+            t2=PlotlyJS.scatter(;x=t_ss, y=signal2_ss)
+            p=PlotlyJS.plot([t1, t2])
+            display(p)
+            readline()
         end
 
         if "realData" in types

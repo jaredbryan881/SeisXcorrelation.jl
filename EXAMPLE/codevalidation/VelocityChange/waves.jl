@@ -1,4 +1,4 @@
-export ricker, dampedSinusoid, sinc
+export ricker, dampedSinusoid, sinc, spectSynth
 
 """
 
@@ -41,7 +41,7 @@ Generate a damped sinusoid.
 - `η::Float64`    : Shift in function maximum
 
 # Output
-- `dampedSin::Array{Float64,1}`    : Computed damped sinusoid
+- `s::Array{Float64,1}`    : Computed damped sinusoid
 - `t::Array{Float64,1}`    : Time axis
 
 """
@@ -49,9 +49,9 @@ function dampedSinusoid(;A::Float64=1.0, ω::Float64=1.0, ϕ::Float64=0.0, η::F
     # generate time axis
     t = timeAxis(dt, t0, n)
     # damped sinusoidal function
-    dampedSin = A*exp.(-λ*abs.(t.-η)) .* cos.(ω*t .+ ϕ)
+    s = A*exp.(-λ*abs.(t.-η)) .* cos.(ω*t .+ ϕ)
 
-    return (dampedSin, t)
+    return (s, t)
 end
 
 """
@@ -94,15 +94,49 @@ end
 - `n::Int64`    : number of samples in arrays
 - `dt::Float64`    : sampling interval
 - `t0::Float64`    : start time of time vector
+
+# Output
+- `s::Array{Float64,1}`    : Computed signal
+- `t::Array{Float64,1}`    : Time axis
+
 """
 function chirp(;c::Array{Float64,1}=collect(range(0.15, stop=15.0, length=100)), tp::Array{Float64,1}=collect(range(0.04, stop=4.0, length=100)), mintp::Float64=0.04, maxtp::Float64=4.0, dist::Float64=1000.0, n::Int64=500, dt::Float64=0.002, t0::Float64=0.0)
     # generate time axis
     t = timeAxis(dt, t0, n)
     # generate a chirp
     tp_ind = findall(x->(x≤maxtp && x≥mintp), tp)
-    sig = [sum(cos.((2π ./ tp[tp_ind]) .* (j .- dist ./ c[tp_ind]))) for j in time]
+    s = [sum(cos.((2π ./ tp[tp_ind]) .* (j .- dist ./ c[tp_ind]))) for j in time]
 
-    return (sig, t)
+    return (s, t)
+end
+
+"""
+
+    spectSynth(;A::Float64=1.0, n::Int64=100, dt::Float64=0.001, t0=0.0)
+
+Generate a synthetic by definition in the frequency domain and inverse FFT
+
+# Arguments
+- `A::Float64`    : Amplitude of the damped sinusoid
+- `n::Int64`    : Number of points
+- `dt::Float64`    : Sampling interval
+
+# Output
+- `s::Array{Float64,1}`    : Computed signal
+- `t::Array{Float64,1}`    : Time axis
+
+"""
+function spectSynth(;A::Float64=1.0, n::Int64=100, dt::Float64=0.001, t0::Float64=0.0)
+    # generate time axis
+    t = timeAxis(dt, t0, n)
+    # generate a signal with flat amplitude spectrum and random phase in [-π, π]
+    # this is of length (n/2)+1 to get a final signal of length n
+    N = convert(Int64, floor(length(t)/2)+2)
+    spectrum = A.+(((rand(N).-0.5).*2π).*im)
+    # inverse FFT
+    s = real(irfft(spectrum, n+1))
+
+    return (s[2:end], t)
 end
 
 """
