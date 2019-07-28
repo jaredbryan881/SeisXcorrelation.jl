@@ -1,24 +1,26 @@
 using SeisIO, SeisNoise, JLD2, Distributed, Dates
 
 @everywhere include("../../src/SeisXcorrelation.jl")
+#@everywhere using SeisXcorrelation
 include("../../src/pairing.jl")
 include("../../src/utils.jl")
 
 # input parameters
-InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/data/seismic/BPnetwork_Jan03_staltakurt_1.5_3.0.jld2",
+InputDict = Dict( "finame"     => "/Users/jared/SCECintern2019/data/seismic/BPnetwork_2003/BPnetwork_2003_combined.jld2",
                   "timeunit"   => 86400,     # unit of time xcorrs are saved in. DL_time_unit if SeisDownload was used
-                  "basefoname" => "/Users/jared/SCECintern2019/data/xcorrs/BPnetwork_Jan03_xcorrs_1.5_3.0",
-                  "maxReadNum" => 9,         # number of processes to read from JLD2 to dict and map over
+                  "basefoname" => "/Users/jared/SCECintern2019/data/xcorrs/BPnetwork_2003/BPnetwork_2003_xcorrs",
+                  "maxReadNum" => 9,         # number of processes to read from JLD2->dict and map over
                   "freqmin"    => 0.1,
                   "freqmax"    => 9.99,
                   "fs"         => 20.0,
-                  "cc_len"     => 3600,
-                  "cc_step"    => 1800,
+                  "cc_len"     => 600,
+                  "cc_step"    => 300,
                   "corrtype"   => ["acorr", "xchancorr", "xcorr"],
+                  "corrmethod" => "cross-correlation",
                   "maxtimelag" => 100.0,
-                  "to_whiten"  => true,      # true, false
-                  "time_norm"  => "one-bit", # false, phase, or one-bit
-                  "allstack"   => false)     # for now, only stacking over DL_time_unit is supported pre-save
+                  "to_whiten"  => false, # true, false
+                  "time_norm"  => false, # false, phase, or one-bit
+                  "allstack"   => false) # for now, only stacking over DL_time_unit is supported pre-save
 
 # read data from JLD2
 data = jldopen(InputDict["finame"])

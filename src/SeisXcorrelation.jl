@@ -3,11 +3,17 @@ __precompile__()
 
 using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, Sockets, ORCA
 
-include("pairing.jl")
-include("fft.jl")
-include("utils.jl")
+# read and write using jld2
 include("io.jl")
+# generate, sort, and classify station pairs
+include("pairing.jl")
+# miscellaneous utilities such as distance computation, windowing, and normalization
+include("utils.jl")
+# splitting utilities for high-order cross-correlation coda extraction
 include("partition.jl")
+# FFT wrapper for high-order cross-correlation
+include("fft.jl")
+# cross-correlation wrapper for high-order cross-correlation
 include("correlate.jl")
 
 export seisxcorrelation, seisxcorrelation_highorder
@@ -42,7 +48,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     to_whiten  = InputDict["to_whiten"]
     time_norm  = InputDict["time_norm"]
     # correlation parameters
-    corrtype   = InputDict["corrtype"]
+    corrtype   = InputDict["corrtype"]   # "xcorr," "acorr," or "xchancorr" (or any combination thereof)
+    corrmethod = InputDict["corrmethod"] # "cross-correlation", "deconv", or "coherence"
     maxtimelag = InputDict["maxtimelag"]
     # stacking parameters
     stack      = InputDict["allstack"]
@@ -89,8 +96,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
         end
 
         # make sure the data is the proper length to avoid dimension mismatch
-        numpts1 = time_unit * S1[1].fs
-        if (length(S1[1].x) > numpts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[2,1]=npts1 end
+        npts1 = Int(time_unit * S1[1].fs)
+        if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[2,1]=npts1 end
 
         FFT1 = try
             # try to read FFT from cached FFTs
@@ -141,8 +148,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 end
 
                 # make sure the data is the proper length to avoid dimension mismatch
-                numpts2 = time_unit * S2[1].fs
-                if (length(S2[1].x) > numpts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[2,1]=npts2 end
+                npts2 = Int(time_unit * S2[1].fs)
+                if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[2,1]=npts2 end
 
                 # try to read FFT from cached FFTs
                 FFT2 = try
@@ -166,7 +173,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             end
 
             # compute correlation using Noise.jl -- returns type CorrData
-            xcorr = compute_cc(FFT1, FFT2, maxtimelag)
+            xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
             # compute distance between stations
             xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
             # save location of each station
@@ -244,10 +251,10 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
     if typeof(win_len) == Float64
         win_len  = convert(Int64, win_len*fs)
     end
-    
+    #=
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
     outFile["info/corrstationlist"] = xcorrlist
-
+    =#
     println("$tstamp: Computing cross-correlations")
     for p1=1:length(xcorrlist[1,:])
         # first station pair name and its reverse
@@ -341,6 +348,12 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
             xcorr_c3_neg.name = "$stn1.$stn2.$(virt_src)_neg"
             xcorr_c3_pos = compute_cc_c3(FFT1_pos, FFT2_pos, maxtimelag)
             xcorr_c3_pos.name = "$stn1.$stn2.$(virt_src)_pos"
+
+            # stacking
+            if stack
+                stack!(xcorr_c3_neg, allstack=true)
+                stack!(xcorr_c3_pos, allstack=true)
+            end
 
             # save cross-correlation
             varname = "$tstamp/$stn1.$stn2/$virt_src"
