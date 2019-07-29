@@ -1,4 +1,4 @@
-using SeisIO, JLD2, SeisNoise, PlotlyJS
+using SeisIO, JLD2, SeisNoise, Statistics, PlotlyJS
 include("utils.jl")
 include("io.jl")
 
@@ -34,9 +34,9 @@ function compute_reference_xcorr(basefiname::String, foname::String)
         # iterate over station pairs
         for pair in keys(grp)
             # load xcorr and reverse if necessary
-            xcorr = grp[pair]
+            xcorr = try grp[pair] catch; continue end
 
-            # stack xcorrs over DL_time_unit (or over time length of CorrData object)
+            # stack xcorrs over DL_time_unit (over time length of CorrData object)
             stack!(xcorr, allstack=true)
 
             # stack xcorrs if they have a key, assign key if not
@@ -66,7 +66,7 @@ Compute the RMS error or SNR for progressively longer stacks of cross-correlatio
 - `finame::String,`    : Input file name for unstacked cross-correlations e.g. "./inputData/BPnetwork.jld2"
 - `refname::String,`    : Input file name for reference cross-corrleations e.g. "./inputData/BPnetwork.jld2"
 - `foname::String,`    : Output file name for fully stacked xcorrs e.g. "referenceXcorr.jld2"
-- `metric::String`    : Method of tracking convergence: "snr" for peak signal-to-noise ratio or "rms" for root mean square misfit
+- `metric::String`    : Method of tracking convergence: "snr" for peak signal-to-noise ratio, "rms" for root mean square misfit, or "cc" for correlation coefficient
 - `skipoverlap::Bool`    : Whether or not to skip overlap in cross-correlation windows. If cross-correlations were computed
                            with no overlap, set this to false to ensure no time is skipped.
 
@@ -74,7 +74,7 @@ Compute the RMS error or SNR for progressively longer stacks of cross-correlatio
 - `foname.jld2`    : contains arrays of RMS errors for progressively longer stacks of cross-correlations
 
 """
-function convergence(basefiname::String, refname::String, foname::String; metric::String="snr", skipoverlap::Bool=false)
+function convergence(basefiname::String, refname::String, foname::String; metric::String="snr", skipoverlap::Bool=false, slice::Union{Bool, Array{Float64,1}}=false)
     # input file contains metadata (stationlist, timestamplist)
     f = jldopen(basefiname*".jld2")
     tslist = f["info/timestamplist"] # time stamps
@@ -102,12 +102,17 @@ function convergence(basefiname::String, refname::String, foname::String; metric
             # load reference cross-correlation for the current station pair
             ref = ref_f[stnpair].corr
 
+            if slice != false
+                slice = Int.(slice.*data.fs)
+                ref = ref[slice[1]:slice[2]]
+            end
+
             # iterate over windowed cross-correlations
             for i=1:size(data.corr)[2]
                 if skipoverlap i=2*i-1 end # assumes cc_step is 1/2 cc_len
 
                 # build input to convergence functions
-                if haskey(stackData, stnpair) && metric=="rms"
+                if haskey(stackData, stnpair) && (metric=="rms" || metric=="cc")
                     # keep running sum of cross-correlations, stack if key exists, assign if not
                     stackData[stnpair] .+= data.corr[:, i]
                 elseif haskey(stackData, stnpair) && metric=="snr"
@@ -125,6 +130,13 @@ function convergence(basefiname::String, refname::String, foname::String; metric
                         push!(conv[stnpair], rms(normalize(ref[:,1]), normalize(stackData[stnpair][:,1])))
                     else
                         conv[stnpair] = [rms(normalize(ref[:,1]), normalize(stackData[stnpair][:,1]))]
+                    end
+                elseif metric=="cc"
+                    # compute Pearson correlation-coefficient between current and reference cross-correlation
+                    if haskey(conv, stnpair)
+                        push!(conv[stnpair], cor(ref[:,1], stackData[stnpair][:,1]))
+                    else
+                        conv[stnpair] = [cor(ref[:,1], stackData[stnpair][:,1])]
                     end
                 elseif metric=="snr"
                     # compute peak signal-to-noise ratio of increasingly long stacks
