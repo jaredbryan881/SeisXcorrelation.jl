@@ -79,7 +79,15 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
         if stn1 in tserrorList continue end
 
         # read station SeisChannels into SeisData before FFT
-        S1 = SeisData(data["$tstamp/$stn1"])
+        S1 = try
+            SeisData(data["$tstamp/$stn1"])
+        catch;
+            push!(tserrorList, "$tstamp/$stn1")
+            filter!(a->a≠stn1, stlist)
+            println("$tstamp: $stn1 encountered an error. Skipping.")
+            continue
+        end
+
         if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
         delete!(S1[1].misc, "kurtosis")
         delete!(S1[1].misc, "eqtimewindow")
@@ -92,7 +100,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 println("$tstamp: $stn1 encountered an error. Skipping.")
                 continue
             end
-        catch
+        catch;
+            # assume key dlerror does not exists (not downloaded via SeisDownload)
         end
 
         # make sure the data is the proper length to avoid dimension mismatch
@@ -130,7 +139,15 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             # cross- or cross-channel correlation
             elseif ct in corrtype
                 # read station SeisChannels into SeisData before FFT
-                S2 = SeisData(data["$tstamp/$stn2"])
+                S2 = try
+                    SeisData(data["$tstamp/$stn2"])
+                catch;
+                    push!(tserrorList, "$tstamp/$stn2")
+                    filter!(a->a≠stn2, stlist)
+                    println("$tstamp: $stn2 encountered an error on read. Skipping.")
+                    continue
+                end
+
                 if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
                 delete!(S2[1].misc, "kurtosis")
                 delete!(S2[1].misc, "eqtimewindow")
@@ -144,7 +161,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                         continue
                     end
                 catch;
-
+                    # assume that the key dlerror does not exist (data not downloaded via SeisDownload)
                 end
 
                 # make sure the data is the proper length to avoid dimension mismatch
@@ -174,16 +191,17 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
 
             # compute correlation using Noise.jl -- returns type CorrData
             xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
-            # compute distance between stations
-            xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
-            # save location of each station
-            xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
-
-            # stack over DL_time_unit
-            if stack==true stack!(xcorr, allstack=true) end
 
             varname = "$tstamp/$stn1.$stn2"
             try
+                # compute distance between stations
+                xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
+                # save location of each station
+                xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
+
+                # stack over DL_time_unit
+                if stack==true stack!(xcorr, allstack=true) end
+
                 outFile[varname] = xcorr
             catch
                 println("$stn1 and $stn2 have no overlap at $tstamp.")
