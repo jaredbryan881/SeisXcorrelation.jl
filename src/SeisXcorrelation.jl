@@ -113,7 +113,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             if stn1 in keys(FFTDict)
                 FFTDict[stn1]
             else
-                FFT1 = compute_fft(S1, freqmin, freqmax, fs, cc_step, cc_len, to_whiten=to_whiten, time_norm=time_norm)
+                FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
                 FFTDict[stn1] = FFT1
                 FFT1
             end
@@ -173,7 +173,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                     if stn2 in keys(FFTDict)
                         FFTDict[stn2]
                     else
-                        FFT2 = compute_fft(S2, freqmin, freqmax, fs, cc_step, cc_len, to_whiten=to_whiten, time_norm=time_norm)
+                        FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
                         FFTDict[stn2] = FFT2
                         FFT2
                     end
@@ -268,7 +268,7 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
     if typeof(win_len) == Float64
         win_len  = convert(Int64, win_len*fs)
     end
-    
+
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
     outFile["info/corrstationlist"] = xcorrlist
 

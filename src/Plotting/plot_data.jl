@@ -1,14 +1,18 @@
 using SeisIO, SeisNoise, JLD2, PlotlyJS, StatsBase, Sockets, ORCA, Statistics
 
 include("../../src/pairing.jl")
+include("../../src/reference.jl")
 
-function plot_seismograms(finame::String, stn::String; norm_factor=nothing, sparse::Int64=1, foname::String="", show::Bool=true)
+function plot_seismograms(finame::String, stn::String; norm_factor=nothing, sparse::Int64=1, foname::String="", show::Bool=true, timeslice::Array{Int64,1}=[1, -1])
     f = jldopen(finame)
     timestamplist = f["info/DLtimestamplist"]
-    timestamplist=timestamplist[1:end]
+
+    if timeslice[2]==-1
+        timeslice = [1, length(timestamplist)]
+    end
 
     # set up plot
-    layout = Layout(width=1200, height=1500,
+    layout = Layout(width=1200, height=2000,
                     xaxis_title="Time [s]",
                     yaxis_title="Days since $(timestamplist[1])",
                     font=attr(size=18),
@@ -16,8 +20,9 @@ function plot_seismograms(finame::String, stn::String; norm_factor=nothing, spar
                     title="$stn")
     p = PlotlyJS.plot([NaN], layout)
 
-    for (titer, time) in enumerate(timestamplist)
+    for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
         ts = f["$time/$stn"]
+        if ts.misc["dlerror"] == 1 continue end
         # extract SeisChannel if necessary
         if typeof(ts)==SeisData ts=ts[1] end
 
@@ -29,28 +34,33 @@ function plot_seismograms(finame::String, stn::String; norm_factor=nothing, spar
             norm = norm_factor
         end
 
-        trace = scatter(;x=taxis[1:sparse:end], y=((ts.x ./ norm) .+ titer .- 1)[1:sparse:end], mode="lines", line_color="rgb(0,0,0)", name=time)
+        trace = scatter(;x=taxis[1:sparse:end], y=((ts.x ./ (norm)) .+ titer .- 1)[1:sparse:end], mode="lines", line_color="rgb(0,0,0)", name=time)
         addtraces!(p, trace)
     end
     deletetraces!(p, 1)
     if foname !== ""
         savefig(p, foname)
     end
-    if show == true
+    if show
         display(p)
+        readline()
     end
-    readline()
 
     close(f)
 end
 
-function plot_xcorrs(basefiname::String, stn1::String, stn2::String; secondary::Union{Bool, String}=false, reference::Union{Bool, String}=false, type::String="wiggles", foname::String="", show::Bool=true, filter::Bool=false)
+function plot_seismograms(finame::String; basefoname::String="", show::Bool=false, sparse::Int64=1)
+    f=jldopen(finame)
+    stlist = f["info/stationlist"]
+    for stn in stlist
+        println("Plotting $stn")
+        plot_seismograms(finame, stn, foname="$basefoname.$stn.pdf", show=show, sparse=sparse)
+    end
+end
+
+function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::Union{Bool, String}=false, type::String="wiggles", foname::String="", show::Bool=true, filter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0., timeslice::Array{Int64,1}=[1,-1], stack::String="selective")
     f = jldopen(basefiname*".jld2")
     timestamplist = f["info/timestamplist"]
-
-    if secondary != false
-        f2 = jldopen(secondary*".jld2")
-    end
 
     # set up plot
     layout = Layout(width=1200, height=800,
@@ -66,51 +76,58 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; secondary::
 
     if type=="heatmap" xcorr_heat = []; tscounter=0 end
 
-    for (titer, time) in enumerate(timestamplist)
-        f_cur = jldopen(basefiname*".$time.jld2")
+    if timeslice[2]==-1
+        timeslice=[1,length(timestamplist)]
+    end
 
-        if secondary != false
-            f2_cur = jldopen(secondary*".$time.jld2")
-        end
+    for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
+        f_cur = jldopen(basefiname*".$time.jld2")
 
         # load cross-correlation or its reverse
         if stnpair ∈ keys(f_cur[time])
             xcorr = f_cur["$time/$stnpair"]
-            stack!(xcorr, allstack=true)
-
-            if secondary != false
-                xcorr2 = f2_cur["$time/$stnpair"]
-                stack!(xcorr2, allstack=true)
+            if stack=="selective"
+                if reference!=false
+                    f_ref=jldopen(reference)
+                    ref = f_ref[stnpair]
+                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=0.3)
+                    close(f_ref)
+                else
+                    xcorr, nRem = selective_stacking(xcorr, threshold=0.3)
+                end
+            else
+                stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
+
         elseif stnpairrev ∈ keys(f_cur[time])
             xcorr = f_cur["$time/$stnpairrev"]
-            stack!(xcorr, allstack=true)
+            if stack=="selective"
+                if reference!=false
+                    f_ref=jldopen(reference)
+                    ref = f_ref[stnpairrev]
+                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=0.3)
+                    close(f_ref)
+                else
+                    xcorr, nRem = selective_stacking(xcorr, threshold=0.3)
+                end
+            else
+                stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
+            end
             xcorr.corr = reverse(xcorr.corr, dims=1)
 
-            if secondary != false
-                xcorr2 = f2_cur["$time/$stnpairrev"]
-                stack!(xcorr2, allstack=true)
-            end
         else
-            continue
+            xcorr = CorrData()
+            xcorr.corr = zeros(4001,1)
         end
-        println(xcorr.misc["dist"])
-        if filter
-            bandpass!(xcorr.corr[:,1], 0.1, 0.9, 20.0, corners=4, zerophase=false)
 
-            if secondary != false
-                bandpass!(xcorr2.corr[:,1], 0.1, 0.9, 20.0, corners=4, zerophase=false)
-            end
+        if filter!=false
+            xcorr.corr[:,1] = bandpass(xcorr.corr[:,1], filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
         end
 
         # make lags visible outside of loop
         global lags = -xcorr.maxlag:1/xcorr.fs:xcorr.maxlag
 
-        if secondary==false
-            norm_factor = maximum(abs.(xcorr.corr[:]))
-        else
-            norm_factor = maximum(maximum([xcorr.corr[:], xcorr2.corr[:]]))
-        end
+        norm_factor = maximum(abs.(xcorr.corr[:]))
 
         try
             if type=="wiggles"
@@ -118,10 +135,6 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; secondary::
                 trace = scatter(;x=lags, y=xcorr.corr[:, 1] ./ (2 * norm_factor) .+ titer .- 1, mode="lines", line_color="black", name=time)
                 addtraces!(p, trace)
 
-                if secondary != false
-                    trace2 = scatter(;x=lags, y=xcorr2.corr[:,1] ./ (2 * norm_factor) .+ titer .- 1, mode="lines", line_color="red", name="secondary $time")
-                    addtraces!(p, trace2)
-                end
             elseif type=="heatmap"
                 # append to array for heat map. We cannot plot before it is fully filled
                 append!(xcorr_heat, xcorr.corr[:, 1]./ (norm_factor))
@@ -130,7 +143,6 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; secondary::
         catch y
             println(y)
             println("Plotting failed")
-            close(f_cur)
         end
         close(f_cur)
     end
@@ -144,23 +156,28 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; secondary::
     end
     deletetraces!(p, 1)
 
-    if reference != false
-        f_ref = jldopen(reference)
-        ref_xcorr = f_ref["$stn1.$stn2"].corr[:,1]
-
-        p1 = PlotlyJS.scatter(;x=lags, y=ref_xcorr, name="Reference xcorr")
-        p=[p; p1]
-    end
-
     if foname !== ""
         savefig(p, foname)
     end
-    if show == true
+    if show
         display(p)
+        readline()
     end
-    readline()
 
     close(f)
+end
+
+function plot_xcorrs(basefiname::String, basefoname::String; show::Bool=false, type::String="heatmap")
+    f=jldopen(basefiname*".jld2")
+    stlist = f["info/stationlist"]
+    stniter=1
+    for stn1 in stlist
+        for stn2 in stlist[stniter:end]
+            println("Processing $stn1--$stn2")
+            plot_xcorrs(basefiname, stn1, stn2; type=type, foname=basefoname*".$stn1.$stn2.png", show=show)
+        end
+        stniter+=1
+    end
 end
 
 function plot_reference(finame::String, stn1::String, stn2::String)
