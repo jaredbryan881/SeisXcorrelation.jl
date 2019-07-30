@@ -84,7 +84,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
         catch;
             push!(tserrorList, "$tstamp/$stn1")
             filter!(a->a≠stn1, stlist)
-            println("$tstamp: $stn1 encountered an error. Skipping.")
+            println("$tstamp: $stn1 encountered an error on read. Skipping.")
             continue
         end
 
@@ -97,7 +97,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
             if S1[1].misc["dlerror"] == 1
                 push!(tserrorList, "$tstamp/$stn1")
                 filter!(a->a≠stn1, stlist)
-                println("$tstamp: $stn1 encountered an error. Skipping.")
+                println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
                 continue
             end
         catch;
@@ -120,7 +120,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
         catch y
             push!(tserrorList, "$tstamp/$stn1")
             filter!(a->a≠stn1, stlist)
-            println("$tstamp: $stn1 encountered an error. Skipping.")
+            println("$tstamp: $stn1 encountered an error on FFT. Skipping.")
             continue
         end
 
@@ -157,7 +157,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                     if S2[1].misc["dlerror"] == 1
                         push!(tserrorList, "$tstamp/$stn2")
                         filter!(a->a≠stn2, stlist)
-                        println("$tstamp: $stn2 encountered an error. Skipping.")
+                        println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
                         continue
                     end
                 catch;
@@ -180,10 +180,9 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 catch y
                     push!(tserrorList, "$tstamp/$stn2")
                     filter!(a->a≠stn2, stlist)
-                    println("$tstamp: $stn2 encountered an error. Skipping.")
+                    println("$tstamp: $stn2 encountered an error on FFT. Skipping.")
                     continue
                 end
-
             else
                 println("Skipping cross-correlation of $stn1 and $stn2.")
                 continue
@@ -269,10 +268,10 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
     if typeof(win_len) == Float64
         win_len  = convert(Int64, win_len*fs)
     end
-    #=
+    
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
     outFile["info/corrstationlist"] = xcorrlist
-    =#
+
     println("$tstamp: Computing cross-correlations")
     for p1=1:length(xcorrlist[1,:])
         # first station pair name and its reverse
