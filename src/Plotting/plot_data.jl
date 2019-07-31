@@ -13,7 +13,7 @@ function plot_seismograms(finame::String, stn::String; norm_factor=nothing, spar
 
     # set up plot
     layout = Layout(width=1200, height=2000,
-                    xaxis_title="Time [s]",
+                    xaxis_title="Time [hours]",
                     yaxis_title="Days since $(timestamplist[1])",
                     font=attr(size=18),
                     showlegend=false,
@@ -26,7 +26,7 @@ function plot_seismograms(finame::String, stn::String; norm_factor=nothing, spar
         # extract SeisChannel if necessary
         if typeof(ts)==SeisData ts=ts[1] end
 
-        taxis = collect(0:length(ts.x)-1) ./ ts.fs
+        taxis = (collect(0:length(ts.x)-1) ./ ts.fs) ./ 3600
 
         if norm_factor == nothing
             norm = maximum(ts.x)
@@ -58,7 +58,7 @@ function plot_seismograms(finame::String; basefoname::String="", show::Bool=fals
     end
 end
 
-function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::Union{Bool, String}=false, type::String="wiggles", foname::String="", show::Bool=true, filter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0., timeslice::Array{Int64,1}=[1,-1], stack::String="selective")
+function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::Union{Bool, String}=false, type::String="wiggles", foname::String="", show::Bool=true, filter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0., timeslice::Array{Int64,1}=[1,-1], stack::String="selective", threshold::Float64=0.0)
     f = jldopen(basefiname*".jld2")
     timestamplist = f["info/timestamplist"]
 
@@ -76,6 +76,10 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
 
     if type=="heatmap" xcorr_heat = []; tscounter=0 end
 
+    if stack=="selective"
+        rmList = Array{Float64,1}()
+    end
+
     if timeslice[2]==-1
         timeslice=[1,length(timestamplist)]
     end
@@ -90,11 +94,12 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
                 if reference!=false
                     f_ref=jldopen(reference)
                     ref = f_ref[stnpair]
-                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=0.3)
+                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=threshold)
                     close(f_ref)
                 else
-                    xcorr, nRem = selective_stacking(xcorr, threshold=0.3)
+                    xcorr, nRem = selective_stacking(xcorr, threshold=threshold)
                 end
+                push!(rmList, nRem / length(xcorr.corr[:, 1]))
             else
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
@@ -105,11 +110,12 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
                 if reference!=false
                     f_ref=jldopen(reference)
                     ref = f_ref[stnpairrev]
-                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=0.3)
+                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=threshold)
                     close(f_ref)
                 else
-                    xcorr, nRem = selective_stacking(xcorr, threshold=0.3)
+                    xcorr, nRem = selective_stacking(xcorr, threshold=threshold)
                 end
+                push!(rmList, nRem / length(xcorr.corr[:, 1]))
             else
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
@@ -146,6 +152,10 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
         end
         close(f_cur)
     end
+
+    #p1=PlotlyJS.plot(rmList)
+    #display(p1)
+    #readline()
 
     if type=="heatmap"
         # dont plot if no cross-correlations were found. This would give div by 0

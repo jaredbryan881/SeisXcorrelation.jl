@@ -78,7 +78,7 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 - `foname.jld2`    : contains arrays of reference cross-correlations for each station pair
 
 """
-function compute_reference_xcorr(basefiname::String, existing_reference::String, foname::String; phase_smoothing::Float64=0.)
+function compute_reference_xcorr(basefiname::String, existing_reference::String, foname::String; phase_smoothing::Float64=0., threshold::Float64=0.0)
     # input file holds metadata (stationlist, timestamplist, etc.)
     f = jldopen(basefiname*".jld2")
     tslist = f["info/timestamplist"]
@@ -99,14 +99,13 @@ function compute_reference_xcorr(basefiname::String, existing_reference::String,
 
         # iterate over station pairs
         for pair in keys(grp)[1]
-            pair = "BP.CCRB..BP1.BP.EADB..BP1"
             # load xcorr
             xcorr = try grp[pair] catch; continue end
             # load reference xcorr
             ref = try f_ref[pair] catch; continue end
 
             # stack xcorrs over length of CorrData object using selective stacking
-            xcorr, nRemoved = selective_stacking(xcorr, ref)
+            xcorr, nRemoved = selective_stacking(xcorr, ref, threshold=threshold)
 
             # stack xcorrs if they have a key, assign key if not
             if haskey(ref_dict, pair)
