@@ -97,8 +97,7 @@ function compute_reference_xcorr(basefiname::String, existing_reference::String,
         println("stacking xcorrs at $tstamp")
 
         # iterate over station pairs
-        for pair in keys(grp)[1]
-            pair="BP.CCRB..BP1.BP.VARB..BP1"
+        for pair in keys(grp)
             # load xcorr
             xcorr = try grp[pair] catch; continue end
             # load reference xcorr

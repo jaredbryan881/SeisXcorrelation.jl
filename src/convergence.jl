@@ -70,6 +70,8 @@ function convergence(basefiname::String, refname::String, foname::String; ntimes
                     ref = partition(reference.corr, startlag, win_len)
                 else
                     println("Please choose an allowable slicing operation. Exiting.")
+                    close(f_cur)
+                    close(ref_f)
                     exit()
                 end
             else
