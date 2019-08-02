@@ -21,7 +21,7 @@ function partition(A::Array{Float32,2}, offset::Int64, size::Int64)
     pos_win = zerolag+offset:zerolag+offset+size
     neg_win = zerolag-offset-size:zerolag-offset
     # stack subarrays
-    A = hcat(A[neg_win], A[pos_win])
+    A = hcat(A[neg_win, :], A[pos_win, :])
 
     return A
 end
@@ -29,16 +29,16 @@ end
 """
     slide(C::CorrData, cc_len::Int64, cc_step::Int64)
 
-Generate equal length sliding windows into an array.
+Generate equal length sliding windows into a CorrData object for both positive and negative codas.
 
 # Arguments
 - `C::CorrData,`    : Input array to be partitioned
-- `cc_len::Int64`    : Number of samples away from the midpoint of the array to start the window.
-- `cc_step::Int64`    : Length of the window in number of samples.
+- `cc_len::Int64`    : Number of samples away from the midpoint of the array to start the window
+- `cc_step::Int64`    : Length of the window in number of samples
 
 # Output
-- `corr_neg`::Array{Float32,2}    : Partitioned array of negative-lag data.
-- `corr_pos`::Array{Float32,2}    : Partitioned array of positive-lag data.
+- `corr_neg::Array{Float32,2}`    : Partitioned array of negative-lag data
+- `corr_pos::Array{Float32,2}`    : Partitioned array of positive-lag data
 """
 function slide_c3(C::CorrData, cc_len::Int64, cc_step::Int64)
     window_samples = Int(cc_len * C.fs)
@@ -60,4 +60,34 @@ function slide_c3(C::CorrData, cc_len::Int64, cc_step::Int64)
     end
 
     return corr_neg, corr_pos
+end
+
+"""
+    window(A::Array{R,1}, win_len::Int64, win_step::Int64) where R<:Real
+
+Generate equal length sliding windows into an array.
+
+# Arguments
+- `A::Array{R,1} where R<:Real,`    : Input array to be windowed
+- `win_len::Int64`    : Number of samples in each window
+- `win_step::Int64`    : Step size for successive windows
+
+# Output
+- `Awin::Array{R,2} where R<:Real`    : Windowed array
+"""
+function window(A::Array{R,1}, win_len::Int64, win_step::Int64) where R<:Real
+    # left-most indices of each window
+    minind = 1:win_len:length(A) - win_len
+
+    # number of windows
+    N = length(minind)
+
+    # initialize array of size (win_len, nWindows)
+    Awin = zeros(win_len, N)
+    # fill matrix
+    for i=1:N
+        Awin[:,i] = A[minind[i]:minind[i]+win_len-1]
+    end
+
+    return Awin
 end
