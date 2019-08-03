@@ -1,10 +1,10 @@
-using SeisIO, JLD2, SeisNoise, Statistics, FFTW, PlotlyJS, Plots
+using SeisIO, JLD2, SeisNoise, Statistics, FFTW, PlotlyJS
 
 include("utils.jl")
 include("partition.jl")
 
 """
-    threshold_stacking(data::CorrData, reference::CorrData, threshold::Float64)
+    selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", win_len::Float64=10.0, win_step::Float64=5.0)
 
 Stack the windows in a CorrData object that exceed a correlation-coefficient threshold with respect to a reference.
 
@@ -20,8 +20,9 @@ Stack the windows in a CorrData object that exceed a correlation-coefficient thr
 - `stackedData::CorrData,`    : Slectively stacked data
 - `cList::Array{Float64,1}`    : Correlation coefficient of each window with respect to the reference
 """
-function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc")
+function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0)
     # slice data if given a time window
+    # TODO: find a better way to pass arguments to this function that only apply to coh, or only to cc. e.g., win_len has no meaning if metric=="cc"
     if typeof(slice) != Bool
         ref = copy(reference)
         d = copy(data)
@@ -58,7 +59,9 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
         # compute correlation coefficient for each window in data with respect to reference
         cList = get_cc(d, ref)
     elseif metric=="coh"
-        cList = get_coh(d, ref)
+        # compute coherence for each window as a function of frequency
+        cList = get_coh(d, ref, coh_win_len, coh_win_step)
+        cList = mean(cList, dims=1)[1,:]
     end
 
     if typeof(slice)==Array{Float64,1}
@@ -107,22 +110,36 @@ end
 
 """
     get_coh(data::CorrData, reference::CorrData, win_len::Float64, win_step::Float64)
+
+Compute the coherence between each window of a cross-correlation CorrData object with respect to a reference.
+
+# Arguments
+- `data::CorrData`    : Cross-correlation data to compute coherency
+- `reference::CorrData`    : Reference cross-correlation function
+- `win_len::Float64`    : Window length [s] when computing the psd using Welch's method. This parameter decides the resolvable frequencies in the coherence calculation
+- `win_step::Float64`    : Step size [s] for windowing of each cross-correlation when computing the psd using Welch's method
+
+# Outputs
+- `coh::Array{Float32,2}`    : Matrix of size (nFreqs, nWindows) containing coherency values for each window and frequency
 """
 function get_coh(data::CorrData, reference::CorrData, win_len::Float64, win_step::Float64)
     # convert window length and window step from time to samples
     win_len = Int(win_len * data.fs)
     win_step = Int(win_step * data.fs)
-    data.corr./=maximum(data.corr)
-    reference.corr./=maximum(reference.corr)
+
+    # normalize signals
+    data.corr = normalize(data.corr)
+    reference.corr = normalize(reference.corr)
+
     # compute the coherence for each window in CorrData dim=2
-    Ryy = welch_psd(ref.corr[:, 1], ref.corr[:, 1], data.fs, win_len, win_step)
+    Ryy = welch_psd(reference.corr[:, 1], reference.corr[:, 1], data.fs, win_len, win_step)
     # initialize arrays to hold psd for each window
     Rxy = Array{eltype(data.corr), 2}(undef, size(Ryy,1), size(data.corr,2))
     Rxx = Array{eltype(data.corr), 2}(undef, size(Ryy,1), size(data.corr,2))
     # iterate over windows of CorrData
     for i=1:size(data.corr,2)
         # estimate the power spectral density using Welch's method
-        Rxy[:, i] = welch_psd(data.corr[:, i], ref.corr[:, 1], data.fs, win_len, win_step, cross=true)
+        Rxy[:, i] = welch_psd(data.corr[:, i], reference.corr[:, 1], data.fs, win_len, win_step, cross=true)
         Rxx[:, i] = welch_psd(data.corr[:, i], data.corr[:, i], data.fs, win_len, win_step)
     end
 
@@ -132,6 +149,26 @@ function get_coh(data::CorrData, reference::CorrData, win_len::Float64, win_step
     return coh
 end
 
+"""
+    welch_psd(A::Array{R,1}, B::Array{R,1}, fs::Float64, win_len::Int64, win_step::Int64; cross=false) where R<:Real
+
+Compute the cross power spectral density of two given arrays using Welch's method
+
+Reference: Welch, P. D. (1967), "The use of Fast Fourier Transform for the estimation of power spectra:
+A method based on time averaging over short, modified periodograms" (PDF),
+IEEE Transactions on Audio and Electroacoustics, AU-15 (2): 70–73, doi:10.1109/TAU.1967.1161901
+
+# Arguments
+- `A::Array{R,1} where R<:Real`    : Signal 1
+- `B::Array{R,1} where R<:Real`    : Signal 1
+- `fs::Float64`    : sampling frequency
+- `win_len::Int64`    : window length [samples] for FFT computation
+- `win_step::Int64`    : step size [samples] for window advancement
+- `cross::Bool`    : whether or not this is the psd of a cross-correlation
+
+# Outputs
+- `real.(cpsd)::Array{R,2}`    : Estimated cross power spectral density of two given time series
+"""
 function welch_psd(A::Array{R,1}, B::Array{R,1}, fs::Float64, win_len::Int64, win_step::Int64; cross=false) where R<:Real
     # partition the data into m windows
     A = window(A, win_len, win_step)

@@ -17,7 +17,7 @@ Compute cross-correlation function and save data in jld2 file with SeisData form
 # Output
 - `foname.jld2`    : contains arrays of reference cross-correlations for each station pair
 """
-function compute_reference_xcorr(basefiname::String, foname::String; phase_smoothing::Float64=0., stack::String="selective")
+function compute_reference_xcorr(basefiname::String, foname::String; phase_smoothing::Float64=0., stack::String="selective", reference::String="")
     # input file holds metadata (stationlist, timestamplist, etc.)
     f = jldopen(basefiname*".jld2")
     tslist = f["info/timestamplist"]
@@ -40,7 +40,10 @@ function compute_reference_xcorr(basefiname::String, foname::String; phase_smoot
 
             # stack xcorrs over length of CorrData object using either "selective" stacking or "linear" stacking
             if stack=="selective"
-                xcorr, rmList = selective_stacking(xcorr)
+                f_exref = jldopen(reference)
+                ref = f_exref[pair]
+                close(f_exref)
+                xcorr, rmList = selective_stacking(xcorr, ref)
             else
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
