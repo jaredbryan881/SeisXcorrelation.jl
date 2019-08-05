@@ -1,4 +1,4 @@
-using SeisIO, JLD2, SeisNoise, Statistics, FFTW, PlotlyJS
+using SeisIO, SeisNoise, JLD2, Statistics, FFTW, DSP, Plots
 
 include("utils.jl")
 include("partition.jl")
@@ -20,7 +20,7 @@ Stack the windows in a CorrData object that exceed a correlation-coefficient thr
 - `stackedData::CorrData,`    : Slectively stacked data
 - `cList::Array{Float64,1}`    : Correlation coefficient of each window with respect to the reference
 """
-function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0)
+function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0, filter::Union{Bool, Array{Float64,1}}=false)
     # slice data if given a time window
     # TODO: find a better way to pass arguments to this function that only apply to coh, or only to cc. e.g., win_len has no meaning if metric=="cc"
     if typeof(slice) != Bool
@@ -60,8 +60,25 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
         cList = get_cc(d, ref)
     elseif metric=="coh"
         # compute coherence for each window as a function of frequency
-        cList = get_coh(d, ref, coh_win_len, coh_win_step)
-        cList = mean(cList, dims=1)[1,:]
+        cohList = get_coh(d, ref, coh_win_len, coh_win_step)
+
+        # use only coherencies for requested frequencies in the mean
+        # default to using all frequencies
+        if filter==false
+            filter=[0.0, ref.fs/2]
+        end
+        # set acceptable frequencies to use in mean coh calculation
+        freqs = rfftfreq(Int(coh_win_len*ref.fs), ref.fs)
+        freq_inds = findall(x->(x>=filter[1] && x<=filter[2]), freqs)
+
+        # compute correlation coefficient for each window in data with respect to reference
+        ccList=get_cc(d, ref)
+
+        # compute mean coherence
+        mcohList = mean(cohList[freq_inds, :], dims=1)[1,:]
+
+        # scale coherence by sign of the correlation coefficient to make extraction of constructively coherent traces possible
+        cList = mcohList .* sign.(ccList)
     end
 
     if typeof(slice)==Array{Float64,1}
@@ -80,6 +97,39 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
 
     # linearly stack all data that exceeds the correlation-coefficient threshold
     stackedData = stack(tempData, allstack=true)
+
+    plot=false
+    if plot
+        # coherence heat map
+        p1=Plots.heatmap(1:length(cohList[1,:]), freqs, cohList)
+        # Mean coherence and correlation coefficient
+        p2 = Plots.plot(mcohList, label="Mean Coh", color= :red)
+        plot!(p2, ccList, label="CC", color= :blue)
+        plot!(p2, cList, label="Signed Coherence", color= :black, legend=false)
+
+        # linear stack vs selective stack vs reference
+        linstack = copy(data)
+        linstack = stack(linstack, allstack=true)
+        p3 = Plots.plot(normalize(linstack.corr[:,1]), label= "Linear")
+        plot!(p3, normalize(stackedData.corr[:,1]), label="Selective")
+        plot!(p3, normalize(ref.corr[:,1]), label="Reference")
+
+        # spectrum of linear stack vs selectie stack vs reference
+        fft_lin = rfft(linstack.corr[:,1])
+        fft_sel = rfft(stackedData.corr[:,1])
+        fft_ref = rfft(ref.corr[:, 1])
+        freqs = rfftfreq(Int(length(ref.corr[:,1])*ref.fs), ref.fs)
+        p4 = Plots.plot(freqs[1:500], normalize(abs.(real.(fft_lin)))[1:500], label="Linear")
+        plot!(p4, freqs[1:500], normalize(abs.(real.(fft_sel)))[1:500], label="Selective")
+        plot!(p4, freqs[1:500], normalize(abs.(real.(fft_ref)))[1:500], label="Reference")
+
+        p5 = Plots.plot(p1, p2, layout=grid(2,1))
+        p6 = Plots.plot(p3, p4, layout=grid(2,1))
+        display(p5)
+        readline()
+        display(p6)
+        readline()
+    end
 
     return stackedData, cList
 end

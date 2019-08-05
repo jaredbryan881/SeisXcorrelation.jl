@@ -34,9 +34,11 @@ function compute_reference_xcorr(basefiname::String, foname::String; phase_smoot
         println("stacking xcorrs at $tstamp")
 
         # iterate over station pairs
-        for pair in keys(grp)
-            # load xcorr and reverse if necessary
+        for pair in sort(keys(grp))
+            # TODO: use only unique station pairings when creating references. Currently no guarantee of uniqueness (reverse can exist)
+            # load xcorr
             xcorr = try grp[pair] catch; continue end
+            remove_nan!(xcorr)
 
             # stack xcorrs over length of CorrData object using either "selective" stacking or "linear" stacking
             if stack=="selective"

@@ -1,7 +1,8 @@
 using SeisIO, SeisNoise, JLD2, PlotlyJS, StatsBase, Sockets, ORCA, Statistics
 
-include("../../src/pairing.jl")
-include("../../src/reference.jl")
+include("../pairing.jl")
+include("../reference.jl")
+include("../stacking.jl")
 
 function plot_seismograms(finame::String, stn::String; norm_factor=nothing, sparse::Int64=1, foname::String="", show::Bool=true, timeslice::Array{Int64,1}=[1, -1])
     f = jldopen(finame)
@@ -58,7 +59,7 @@ function plot_seismograms(finame::String; basefoname::String="", show::Bool=fals
     end
 end
 
-function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::Union{Bool, String}=false, type::String="wiggles", foname::String="", show::Bool=true, filter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0., timeslice::Array{Int64,1}=[1,-1], stack::String="selective", threshold::Float64=0.0)
+function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::Union{Bool, String}=false, type::String="heatmap", foname::String="", show::Bool=true, filter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0., timeslice::Array{Int64,1}=[1,-1], stack::String="selective", threshold::Float64=0.0, metric::String="cc", slice::Union{Bool, Float64, Array{Float64,1}}=false)
     f = jldopen(basefiname*".jld2")
     timestamplist = f["info/timestamplist"]
 
@@ -90,32 +91,49 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
         # load cross-correlation or its reverse
         if stnpair ∈ keys(f_cur[time])
             xcorr = f_cur["$time/$stnpair"]
+            if filter!=false
+                xcorr.corr = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+            end
+            nWins = length(xcorr.corr[1,:])
             if stack=="selective"
                 if reference!=false
                     f_ref=jldopen(reference)
                     ref = f_ref[stnpair]
-                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=threshold)
+
+                    if filter!=false
+                        ref.corr = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+                    end
+                    xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter)
                     close(f_ref)
                 else
-                    xcorr, nRem = selective_stacking(xcorr, threshold=threshold)
+                    xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter)
                 end
-                push!(rmList, nRem / length(xcorr.corr[:, 1]))
+                nRem = length(findall(x->(x<threshold), ccList))
+                push!(rmList, nRem / nWins)
             else
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
 
         elseif stnpairrev ∈ keys(f_cur[time])
             xcorr = f_cur["$time/$stnpairrev"]
+            if filter!=false
+                xcorr.corr = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+            end
+            nWins = length(xcorr.corr[1,:])
             if stack=="selective"
                 if reference!=false
                     f_ref=jldopen(reference)
                     ref = f_ref[stnpairrev]
-                    xcorr, nRem = selective_stacking(xcorr, ref, threshold=threshold)
+                    if filter!=false
+                        ref.corr = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+                    end
+                    xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter)
                     close(f_ref)
                 else
-                    xcorr, nRem = selective_stacking(xcorr, threshold=threshold)
+                    xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter)
                 end
-                push!(rmList, nRem / length(xcorr.corr[:, 1]))
+                nRem = length(findall(x->(x<threshold), ccList))
+                push!(rmList, nRem / nWins)
             else
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
@@ -124,10 +142,6 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
         else
             xcorr = CorrData()
             xcorr.corr = zeros(4001,1)
-        end
-
-        if filter!=false
-            xcorr.corr[:,1] = bandpass(xcorr.corr[:,1], filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
         end
 
         # make lags visible outside of loop
@@ -143,7 +157,7 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
 
             elseif type=="heatmap"
                 # append to array for heat map. We cannot plot before it is fully filled
-                append!(xcorr_heat, xcorr.corr[:, 1]./ (norm_factor))
+                append!(xcorr_heat, (xcorr.corr[:, 1]./ (norm_factor)))
                 tscounter+=1
             end
         catch y
@@ -153,9 +167,11 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
         close(f_cur)
     end
 
-    #p1=PlotlyJS.plot(rmList)
-    #display(p1)
-    #readline()
+    if stack=="selective"
+        p1=PlotlyJS.plot(rmList.*100)
+        display(p1)
+        readline()
+    end
 
     if type=="heatmap"
         # dont plot if no cross-correlations were found. This would give div by 0
@@ -188,6 +204,88 @@ function plot_xcorrs(basefiname::String, basefoname::String; show::Bool=false, t
         end
         stniter+=1
     end
+end
+
+function plot_corrcoeff(basefiname::String, reference::String)
+    # read base file for time and station information
+    f=jldopen(basefiname*".jld2")
+    stlist = f["info/stationlist"]
+    tslist = f["info/timestamplist"]
+    close(f)
+    # reference cross-correlations
+    f_ref = jldopen(reference)
+
+    # empty dictionary containing the correlation coefficients for each station pair through time
+    ccDict = Dict{String, Array{Float64,1}}()
+
+    # iterate over station pairs present at the current time step
+    for t in tslist
+        println("Processing $t")
+        # open file containing cross-correlations for the current time stamp
+        f_cur = jldopen(basefiname*".$t.jld2")
+        for stnpair in keys(f_cur[t])
+            # read cross-correlations for current station pair
+            xcorr = f_cur["$t/$stnpair"]
+            # read corresponding reference
+            ref = f_ref[stnpair]
+            # compute correlation-coefficient
+            ccList = get_cc(xcorr, ref)
+            # append to the dictionary
+            if haskey(ccDict, stnpair)
+                append!(ccDict[stnpair], ccList)
+            else
+                ccDict[stnpair] = ccList
+            end
+        end
+        close(f_cur) # current timestamp cross-correlations
+    end
+    close(f_ref) # reference cross-correlations
+    return ccDict
+end
+
+function plot_corrcoeff(basefiname::String, reference::String, stnpair::String)
+    # read base file for time and station information
+    f=jldopen(basefiname*".jld2")
+    tslist = f["info/timestamplist"]
+    close(f)
+    # reference cross-correlations
+    f_ref = jldopen(reference)
+
+    # empty dictionary containing the correlation coefficients for each station pair through time
+    ccDict = Dict{String, Array{Float64,1}}()
+
+    # empty dictionary containing the maximum amplitude of each cross-correlation window
+    maxAmp = Dict{String, Array{Float32,1}}()
+
+    # iterate over station pairs present at the current time step
+    for t in tslist
+        # open file containing cross-correlations for the current time stamp
+        f_cur = jldopen(basefiname*".$t.jld2")
+        # read cross-correlations for current station pair
+        xcorr = try f_cur["$t/$stnpair"] catch; continue end
+        dist = xcorr.misc["dist"]
+        # read corresponding reference
+        ref = f_ref[stnpair]
+        # compute correlation-coefficient
+        ccList = get_cc(xcorr, ref)
+        # extract maximum amplitude for each windowed cross-correlation
+        maxWinAmp = maximum(xcorr.corr, dims=1)[:]
+
+        # append to the dictionary
+        if haskey(ccDict, stnpair)
+            append!(ccDict[stnpair], ccList)
+        else
+            ccDict[stnpair] = ccList
+        end
+        if haskey(maxAmp, stnpair)
+            append!(maxAmp[stnpair], maxWinAmp)
+        else
+            maxAmp[stnpair] = maxWinAmp
+        end
+        close(f_cur) # current timestamp cross-correlations
+    end
+    close(f_ref) # reference cross-correlations
+    return ccDict, maxAmp, dist
 end
 
 function plot_reference(finame::String, stn1::String, stn2::String)
