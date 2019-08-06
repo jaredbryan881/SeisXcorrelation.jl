@@ -1,4 +1,4 @@
-using SeisIO, JLD2, Wavelets
+using SeisIO, JLD2, Wavelets, Statistics, DSP, FFTW, Plots
 
 include("wavelet_methods.jl")
 
@@ -33,7 +33,7 @@ function test_WXS(finame::String, foname::String, InputDict::Dict, type::String;
             npts = length(cur)
             tvec = (collect(0:npts-1) .* dt) .+ mintime
 
-            (freqbands, dvv, err) = wxs_freqbands(cur, ref, tvec, twindow, fbands, dj, s0, J, sig=sig, wvn=wvn, unwrap=unwrap, siglvl=siglvl)
+            (freqbands, dvv, err) = wxs_freqbands(cur, ref, tvec, twindow, fbands, dj, s0, J, wvn=wvn, unwrap=unwrap, sig=sig, siglvl=siglvl)
         end
     end
 end
@@ -56,8 +56,8 @@ dvov = 0.005
 
 InputDict_WXS = Dict( "fmin"    => 0.0,
                       "fmax"    => 10.0,
-                      "tmin"    => 50.0,
-                      "tmax"    => 100.0,
+                      "tmin"    => 0.0,
+                      "tmax"    => 200.0,
                       "dt"      => 0.05,
                       "dj"      => 1/12,
                       "s0"      => -1,
