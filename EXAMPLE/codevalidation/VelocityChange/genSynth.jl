@@ -1,17 +1,17 @@
 include("makeStretchData.jl")
 include("../../../src/utils.jl")
 
-using PlotlyJS, SeisIO, SeisNoise, JLD2, FFTW
+using PlotlyJS, SeisIO, SeisNoise, JLD2, FFTW, ORCA
 
 foname="/Users/jared/SCECintern2019/data/validation/verificationData.jld2"
 
 types = ["dampedSinusoid", "rickerConv", "realData", "spectSynth"]
 
-finame_xcorr="/Users/jared/SCECintern2019/data/reference/BPnetwork_Jan03_nowhiten_nonorm/BPnetwork_Jan03_1.5_3.0_ref.jld2"
-dataset_xcorr="BP.CCRB..BP1.BP.SMNB..BP1"
+finame_xcorr="/Users/jared/SCECintern2019/data/reference/BPnetwork_2003/reference_xcorr/BPnetwork_2003_ref.jld2"
+dataset_xcorr="BP.CCRB..BP1.BP.VARB..BP1"
 xcf=jldopen(finame_xcorr)
 real_xcorr=xcf[dataset_xcorr]
-save=false
+save=true
 plot=false
 
 if size(real_xcorr.corr)[2]>1 stack!(real_xcorr, allstack=true) end
@@ -47,7 +47,7 @@ rickerParams = Dict( "f"      => 0.25,
                      "npts"   => 4001,
                      "m"      => 1,
                      "sparse" => 0,
-                     "stretchSource" => 0.2 )
+                     "stretchSource" => 0.0 )
 
 chirpParams = Dict( "c"     => collect(range(0.15, stop=15.0, length=100)),
                     "tp"    => collect(range(0.04, stop=4.0, length=100)),
@@ -84,6 +84,7 @@ for dvV in dvVlist
             normalize!(signal1_rc)
             if rickerParams["stretchSource"] != 0.0
                 inSignal, t_rc = generateSignal("ricker", rickerParams, sparse=rickerParams["sparse"], stretchSource=rickerParams["stretchSource"])
+                normalize!(inSignal)
             else
                 inSignal = signal1_rc
             end
@@ -120,31 +121,33 @@ for dvV in dvVlist
             f["rickerConv/$dvV.$noiselvl/cur"] = signal2_rc
             f["realData/$dvV.$noiselvl/ref"] = xcorr
             f["realData/$dvV.$noiselvl/cur"] = stretch_xcorr
+            f["spectSynth/$dvV.$noiselvl/ref"] = signal1_ss
+            f["spectSynth/$dvV.$noiselvl/cur"] = signal2_ss
         end
 
         if plot
             plots = Array{PlotlyJS.Plot, 1}()
             if "dampedSinusoid" in types
-                p1 = PlotlyJS.Plot([PlotlyJS.scatter(;x=t_ds, y=signal1_ds, name="Unstretched"),
-                                    PlotlyJS.scatter(;x=t_ds, y=signal2_ds, name="Stretched $(dvV*(-100))%")])
+                p1 = PlotlyJS.Plot([PlotlyJS.scatter(;x=t_ds, y=signal1_ds, name="Unstretched", line_color="black"),
+                                    PlotlyJS.scatter(;x=t_ds, y=signal2_ds, name="Stretched $(dvV*(-100))%", line_color="red")])
             else
                 p1=PlotlyJS.Plot([PlotlyJS.scatter(;y=ones(10))])
             end
             if "rickerConv" in types
-                p2 = PlotlyJS.Plot([PlotlyJS.scatter(;x=t_rc, y=signal1_rc, name="Unstretched"),
-                                    PlotlyJS.scatter(;x=t_rc, y=signal2_rc, name="Stretched $(dvV*(-100))%")])
+                p2 = PlotlyJS.Plot([PlotlyJS.scatter(;x=t_rc, y=signal1_rc, name="Unstretched", line_color="black"),
+                                    PlotlyJS.scatter(;x=t_rc, y=signal2_rc, name="Stretched $(dvV*(-100))%", line_color="red")])
             else
                 p2=PlotlyJS.Plot([PlotlyJS.scatter(;y=ones(10))])
             end
             if "realData" in types
-                p3 = PlotlyJS.Plot([PlotlyJS.scatter(;x=lags, y=xcorr, name="Unstretched"),
-                                    PlotlyJS.scatter(;x=lags, y=stretch_xcorr, name="Stretched $(dvV*(-100))%")])
+                p3 = PlotlyJS.Plot([PlotlyJS.scatter(;x=lags, y=xcorr, name="Unstretched", line_color="black"),
+                                    PlotlyJS.scatter(;x=lags, y=stretch_xcorr, name="Stretched $(dvV*(-100))%", line_color="red")])
             else
                 p3=PlotlyJS.Plot([PlotlyJS.scatter(;y=ones(10))])
             end
             # temporarily, you cannot plot only certain pairs of data types. You must plot all.
             # these conditionals will be more meaningful later
-            plots=[p1, p2, p3]
+            plots=[p3]
 
             p=PlotlyJS.plot(plots)
             display(p)
