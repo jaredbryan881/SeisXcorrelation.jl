@@ -21,14 +21,14 @@ Compute the RMS error or SNR for progressively longer stacks of cross-correlatio
 - `foname.jld2`    : contains arrays of RMS errors for progressively longer stacks of cross-correlations
 
 """
-function convergence(basefiname::String, refname::String, foname::String; ntimes::Int64=-1, metric::String="cc", skipoverlap::Bool=false, slice::Union{Bool, Float64, Array{Float64,1}}=false)
+function convergence(basefiname::String, refname::String, foname::String; ntimes::Int64=-1, metric::String="cc", skipoverlap::Bool=false, slice::Union{Bool, Float64, Array{Float64,1}}=false, thresh::Float64=-1)
     # input file contains metadata (stationlist, timestamplist)
     f = jldopen(basefiname*".jld2")
     tslist = f["info/timestamplist"] # time stamps
     close(f) # input file
 
     # read reference xcorrs
-    ref_f = jldopen(refname)
+    f_ref = jldopen(refname)
 
     # dictionary to keep track of convergence vectors for each station pair
     conv = Dict()
@@ -38,45 +38,41 @@ function convergence(basefiname::String, refname::String, foname::String; ntimes
     if ntimes==-1
         ntimes=length(tslist)
     end
-
+    nWins = Dict()
+    nGood = Dict()
     # iterate over timestamps
     for tstamp in tslist[1:ntimes]
         println("Processing $tstamp")
         # read xcorrs for each time step
         f_cur = jldopen(basefiname*".$tstamp.jld2")
+        stnpairs = sort(keys(f_cur[tstamp]))
+        stnpairs = ["BP.CCRB..BP1.BP.SMNB..BP1"]
 
         # iterate over station pairs
-        for stnpair in keys(f_cur[tstamp])
+        for stnpair in stnpairs
             # load unstacked cross-correlations
             data = try f_cur["$tstamp/$stnpair"] catch; continue end
 
             # load reference cross-correlation for the current station pair
-            reference = ref_f[stnpair]
+            reference = f_ref[stnpair]
 
             # optionally slice reference to keep only coda or only ballistic
-            if typeof(slice) != Bool
-                if typeof(slice)==Float64
-                    # time vector
-                    tvec = -reference.maxlag:1/reference.fs:reference.maxlag
-                    # find all times within [-slice,slice] time
-                    t_inds = findall(x->(x>=-slice && x<=slice), tvec)
-                    # slice reference (maintain 2d array)
-                    ref = reference.corr[t_inds, :]
-                elseif typeof(slice)==Array{Float64,1}
-                    # convert startlag/endlag[s] to startlag/windowlength[samples]
-                    win_len = Int(diff(slice)[1] * reference.fs)
-                    startlag = Int(slice[1] * reference.fs)
-                    # partition reference to keep only the coda
-                    ref = partition(reference.corr, startlag, win_len)
-                else
-                    println("Please choose an allowable slicing operation. Exiting.")
-                    close(f_cur)
-                    close(ref_f)
-                    exit()
-                end
+            ref = corr_slice(reference, 1:size(reference.corr, 2), slice)
+
+            if haskey(nWins, stnpair)
+                push!(nWins[stnpair], size(data.corr, 2))
             else
-                # default to full reference cross-correlation
-                ref = reference.corr
+                nWins[stnpair] = [size(data.corr, 2)]
+            end
+
+            datacopy, cList = selective_stacking(data, reference, threshold=thresh)
+            good_inds = findall(x->(x>thresh), cList)
+            data.corr = data.corr[:, good_inds]
+
+            if haskey(nGood, stnpair)
+                push!(nGood[stnpair], length(good_inds))
+            else
+                nGood[stnpair] = [length(good_inds)]
             end
 
             # iterate over windowed cross-correlations
@@ -84,18 +80,7 @@ function convergence(basefiname::String, refname::String, foname::String; ntimes
                 if skipoverlap i=2*i-1 end # assumes cc_step is 1/2 cc_len
 
                 # slice current cross-correlation if necessary
-                if typeof(slice) != Bool
-                    if typeof(slice)==Float64
-                        # keep only ballistic -- 1D array
-                        data_cur = data.corr[t_inds, i]
-                    elseif typeof(slice)==Array{Float64,1}
-                        # keep only coda -- 2D array (this will change implementation of convergence calculation)
-                        data_cur = partition(data.corr[:, i:i], startlag, win_len)
-                    end
-                else
-                    # default to full windowed cross-correlation -- 1D array
-                    data_cur = data.corr[:, i]
-                end
+                data_cur = corr_slice(data, i:i, slice)
 
                 # build input to convergence functions
                 # here we either create a progressively longer stack of cross-correlation
@@ -148,23 +133,65 @@ function convergence(basefiname::String, refname::String, foname::String; ntimes
                     end
                 elseif metric=="snr"
                     # compute peak signal-to-noise ratio of increasingly long stacks
-                    psnr = maximum(snr(stackData[stnpair], reference.fs))
                     if haskey(conv, stnpair)
-                        push!(conv[stnpair], psnr)
+                        # compute psnr for both positive and negative coda
+                        if typeof(slice)==Array{Float64,1}
+                            neg_coda = findall(x->(x%2!=0), collect(1:size(stackData[stnpair], 2)))
+                            pos_coda = findall(x->(x%2==0), collect(1:size(stackData[stnpair], 2)))
+                            neg_coda_snr = maximum(snr(stackData[stnpair][:, neg_coda], reference.fs))
+                            pos_coda_snr = maximum(snr(stackData[stnpair][:, pos_coda], reference.fs))
+
+                            push!(conv[stnpair], [neg_coda_snr, pos_coda_snr])
+                        else
+                            push!(conv[stnpair], maximum(snr(stackData[stnpair], reference.fs)))
+                        end
                     else
-                        conv[stnpair] = [psnr]
+                        if typeof(slice)==Array{Float64,1}
+                            neg_coda = findall(x->(x%2!=0), collect(1:size(stackData[stnpair], 2)))
+                            pos_coda = findall(x->(x%2==0), collect(1:size(stackData[stnpair], 2)))
+                            neg_coda_snr = maximum(snr(stackData[stnpair][:, neg_coda], reference.fs))
+                            pos_coda_snr = maximum(snr(stackData[stnpair][:, pos_coda], reference.fs))
+
+                            conv[stnpair] = [[neg_coda_snr, pos_coda_snr]]
+                        else
+                            conv[stnpair] = [maximum(snr(stackData[stnpair], reference.fs))]
+                        end
                     end
                 end
             end
         end
         close(f_cur) # xcorrs for each time step
     end
-    close(ref_f) # reference xcorrs
+    close(f_ref) # reference xcorrs
 
     # write convergence vectors to disk
     f_conv = jldopen(foname, "a+")
     for key in keys(conv)
         f_conv["$metric/$key"] = conv[key]
+        f_conv["$metric/nWin/$key"] = nWins[key]
+        f_conv["$metric/nGood/$key"] = nGood[key]
     end
+
     close(f_conv) # convergence file
+end
+
+function corr_slice(data::CorrData, range::UnitRange{Int64}, slice::Union{Bool, Float64, Array{Float64,1}}=false)
+    if typeof(slice)==Float64
+        # time vector
+        tvec = -data.maxlag:1/data.fs:data.maxlag
+        # find all times within [-slice,slice] time
+        t_inds = findall(x->(x>=-slice && x<=slice), tvec)
+        # slice reference (maintain 2d array)
+        d = data.corr[t_inds, range]
+    elseif typeof(slice)==Array{Float64,1}
+        # convert startlag/endlag[s] to startlag/windowlength[samples]
+        win_len = Int(diff(slice)[1] * data.fs)
+        startlag = Int(slice[1] * data.fs)
+        # partition reference to keep only the coda
+        d = partition(data.corr[:, range], startlag, win_len)
+    else
+        println("Proceeding without slicing.")
+        d = data.corr
+    end
+    return d
 end
