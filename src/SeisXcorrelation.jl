@@ -20,7 +20,6 @@ export seisxcorrelation, seisxcorrelation_highorder
 
 
 """
-
     seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
 
 Compute cross-correlation save data in jld2 file with CorrData format.
@@ -54,11 +53,8 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     # stacking parameters
     stack      = InputDict["allstack"]
 
-    stniter = 1 # counter to prevent computing duplicate xcorrs with reversed order
-
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
-
     # list of stations that failed for this timestep
     tserrorList = []
 
@@ -73,8 +69,11 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     outFile["info/timeunit"] = time_unit
 
     println("$tstamp: Computing cross-correlations")
+    stniter = 0 # counter to prevent computing duplicate xcorrs with reversed order
     # iterate over station list
     for stn1 in stlist
+        stniter+=1
+
         # don't attempt FFT if this failed already
         if stn1 in tserrorList continue end
 
@@ -101,7 +100,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 continue
             end
         catch;
-            # assume key dlerror does not exists (not downloaded via SeisDownload)
+            # assume key "dlerror" does not exist (not downloaded via SeisDownload)
         end
 
         # make sure the data is the proper length to avoid dimension mismatch
@@ -188,7 +187,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 continue
             end
 
-            # compute correlation using Noise.jl -- returns type CorrData
+            # compute correlation using SeisNoise.jl -- returns type CorrData
             xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
 
             varname = "$tstamp/$stn1.$stn2"
@@ -207,7 +206,6 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 push!(tserrorList, "$tstamp/$stn1")
             end
         end
-        stniter += 1
 
         # release memory held by the FFT and time series for this station
         delete!(FFTDict, stn1)
