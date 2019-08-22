@@ -20,7 +20,7 @@ Stack the windows in a CorrData object that exceed a correlation-coefficient thr
 - `stackedData::CorrData,`    : Slectively stacked data
 - `cList::Array{Float64,1}`    : Correlation coefficient of each window with respect to the reference
 """
-function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0, filter::Union{Bool, Array{Float64,1}}=false)
+function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0, filter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0.0)
     # slice data if given a time window
     # TODO: find a better way to pass arguments to this function that only apply to coh, or only to cc. e.g., win_len has no meaning if metric=="cc"
     if typeof(slice) != Bool
@@ -81,8 +81,10 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
         cList = mcohList .* sign.(ccList)
     end
 
+    # find windows that exceed the threshold
     if typeof(slice)==Array{Float64,1}
         # keep only xcorrs coherent in positive && negative coda
+        # for now, we take only the windowed cross-correaltions that improve both the positive and negative coda
         good_fit_neg = findall(x->(x>=threshold), cList[1:Int(length(cList)/2)])
         good_fit_pos = findall(x->(x>=threshold), cList[Int(length(cList)/2+1):end])
         good_fit = intersect(good_fit_neg, good_fit_pos)
@@ -96,40 +98,7 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
     tempData.corr = tempData.corr[:, good_fit]
 
     # linearly stack all data that exceeds the correlation-coefficient threshold
-    stackedData = stack(tempData, allstack=true)
-
-    plot=false
-    if plot
-        # coherence heat map
-        p1=Plots.heatmap(1:length(cohList[1,:]), freqs, cohList)
-        # Mean coherence and correlation coefficient
-        p2 = Plots.plot(mcohList, label="Mean Coh", color= :red)
-        plot!(p2, ccList, label="CC", color= :blue)
-        plot!(p2, cList, label="Signed Coherence", color= :black, legend=false)
-
-        # linear stack vs selective stack vs reference
-        linstack = copy(data)
-        linstack = stack(linstack, allstack=true)
-        p3 = Plots.plot(normalize(linstack.corr[:,1]), label= "Linear")
-        plot!(p3, normalize(stackedData.corr[:,1]), label="Selective")
-        plot!(p3, normalize(ref.corr[:,1]), label="Reference")
-
-        # spectrum of linear stack vs selectie stack vs reference
-        fft_lin = rfft(linstack.corr[:,1])
-        fft_sel = rfft(stackedData.corr[:,1])
-        fft_ref = rfft(ref.corr[:, 1])
-        freqs = rfftfreq(Int(length(ref.corr[:,1])*ref.fs), ref.fs)
-        p4 = Plots.plot(freqs[1:500], normalize(abs.(real.(fft_lin)))[1:500], label="Linear")
-        plot!(p4, freqs[1:500], normalize(abs.(real.(fft_sel)))[1:500], label="Selective")
-        plot!(p4, freqs[1:500], normalize(abs.(real.(fft_ref)))[1:500], label="Reference")
-
-        p5 = Plots.plot(p1, p2, layout=grid(2,1))
-        p6 = Plots.plot(p3, p4, layout=grid(2,1))
-        display(p5)
-        readline()
-        display(p6)
-        readline()
-    end
+    stackedData = stack(tempData, allstack=true, phase_smoothing=phase_smoothing)
 
     return stackedData, cList
 end
