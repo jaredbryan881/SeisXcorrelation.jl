@@ -17,6 +17,8 @@ env:
   #- MPI_IMPL=mpich
   - MPI_IMPL=openmpi
 before_install:
+
+  # install mpi environment
   - sh ./conf/travis-install-mpi.sh $MPI_IMPL
   - export PATH=$HOME/OpenMPI/bin:$HOME/MPICH/bin:$PATH
   - export CC=mpicc
@@ -33,8 +35,14 @@ jobs:
     - stage: Documentation
       julia: 1.1
       script:
-          - julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd()));
-                                               Pkg.instantiate();
-                                               Pkg.build("SeisXcorrelation")'
-          - julia -e 'using Pkg; cd(Pkg.dir("SeisXcorrelation")); Pkg.add("Documenter"); include(joinpath("docs", "make.jl"))'
+
+          # for unregistered package, it must be added with `Pkg.pkg"add url"`
+          - julia -e 'using Pkg; Pkg.pkg"add https://github.com/kura-okubo/SeisIO.jl https://github.com/tclements/Noise.jl";'
+          - julia --project=docs/ -e 'using Pkg;
+            Pkg.develop(PackageSpec(path=pwd()));
+            Pkg.instantiate();
+            Pkg.clone("https://github.com/tclements/Noise.jl");
+            Pkg.build("SeisXcorrelation")'
+          - julia -e 'using Pkg;
+            cd(Pkg.dir("SeisXcorrelation")); Pkg.add("Documenter"); include(joinpath("docs", "make.jl"))'
       after_success: skip
