@@ -20,12 +20,12 @@ export seisxcorrelation, seisxcorrelation_highorder
 
 
 """
-    seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
+    seisxcorrelation(tstamp::String, InputDict::Dict)
 
 Compute cross-correlation save data in jld2 file with CorrData format.
 
 # Arguments
-- `data`::Dict    : Dictionary containing input data in the form: tstamp/stn => SeisChannel
+- `data`::Dict    : !Reprecated! Dictionary containing input data in the form: tstamp/stn => SeisChannel
 - `tstamp::String,`    : Time stamp to read from JLD2 file.
 - `InputDict::Dict`    : Dictionary containing IO, FFT, xcorr, and stacking parameters
 
@@ -33,9 +33,12 @@ Compute cross-correlation save data in jld2 file with CorrData format.
 - `tserrorList`::Array{String,1}    : Array containing the name of failed cross-correlation timestamp/stationpairs
 - `basefoname.tstamp.jld2`    : contains CorrData structure with a hierarchical structure (CC function, metadata)
 
+## Update: Compute fft for the first time and store it into `FFTDict`. Xcorr from FFTDict afterwards, saving time
+for loading SeisData and for compute_fft.
 """
-function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
+function seisxcorrelation(tstamp::String, InputDict::Dict)
     # IO parameters
+    finame     = InputDict["finame"]
     basefoname = InputDict["basefoname"]
     time_unit  = InputDict["timeunit"]
     # FFT parameters
@@ -46,6 +49,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     cc_step    = InputDict["cc_step"]
     to_whiten  = InputDict["to_whiten"]
     time_norm  = InputDict["time_norm"]
+    maxdistance= InputDict["maxdistance"]
     # correlation parameters
     corrtype   = InputDict["corrtype"]   # "xcorr," "acorr," or "xchancorr" (or any combination thereof)
     corrmethod = InputDict["corrmethod"] # "cross-correlation", "deconv", or "coherence"
@@ -58,10 +62,14 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     # list of stations that failed for this timestep
     tserrorList = []
 
+    # load input file
+    inFile = jldopen(finame, "r")
+
     # split dataset names (keys of data) by "/" to get station list
     # assume form "$tstamp/$station"
-    dsk = collect(keys(data))
-    stlist = sort([string(split.(dsk[i], "/")[2]) for i=1:length(dsk)])
+    #dsk = collect(keys(data))
+    #stlist = sort([string(split.(dsk[i], "/")[2]) for i=1:length(dsk)])
+    stlist = collect(keys(inFile["$tstamp"]))
 
     # create output file for each time stamp, fill relevant info
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
@@ -71,57 +79,67 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     println("$tstamp: Computing cross-correlations")
     stniter = 0 # counter to prevent computing duplicate xcorrs with reversed order
     # iterate over station list
+
     for stn1 in stlist
         stniter+=1
 
         # don't attempt FFT if this failed already
         if stn1 in tserrorList continue end
 
-        # read station SeisChannels into SeisData before FFT
-        S1 = try
-            SeisData(data["$tstamp/$stn1"])
-        catch;
-            push!(tserrorList, "$tstamp/$stn1")
-            filter!(a->a≠stn1, stlist)
-            println("$tstamp: $stn1 encountered an error on read. Skipping.")
-            continue
-        end
-
-        if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
-        delete!(S1[1].misc, "kurtosis")
-        delete!(S1[1].misc, "eqtimewindow")
-
-        # do not attempt fft if data was not available
-        try
-            if S1[1].misc["dlerror"] == 1
-                push!(tserrorList, "$tstamp/$stn1")
-                filter!(a->a≠stn1, stlist)
-                println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
-                continue
-            end
-        catch;
-            # assume key "dlerror" does not exist (not downloaded via SeisDownload)
-        end
-
-        # make sure the data is the proper length to avoid dimension mismatch
-        npts1 = Int(time_unit * S1[1].fs)
-        if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[2,1]=npts1 end
-
         FFT1 = try
             # try to read FFT from cached FFTs
             if stn1 in keys(FFTDict)
                 FFTDict[stn1]
             else
-                FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+
+                # read station SeisChannels into SeisData before FFT
+                S1 = try
+                    #SeisData(data["$tstamp/$stn1"])
+                    SeisData(inFile["$tstamp/$stn1"])
+                catch;
+                    push!(tserrorList, "$tstamp/$stn1")
+                    filter!(a->a≠stn1, stlist)
+                    println("$tstamp: $stn1 encountered an error on read. Skipping.")
+                    continue
+                end
+
+                if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
+                delete!(S1[1].misc, "kurtosis")
+                delete!(S1[1].misc, "eqtimewindow")
+
+                # do not attempt fft if data was not available
+                try
+                    if S1[1].misc["dlerror"] == 1
+                        push!(tserrorList, "$tstamp/$stn1")
+                        filter!(a->a≠stn1, stlist)
+                        println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
+                        continue
+                    end
+                catch;
+                    # assume key "dlerror" does not exist (not downloaded via SeisDownload)
+                end
+
+                # make sure the data is the proper length to avoid dimension mismatch
+                npts1 = Int(time_unit * S1[1].fs)
+                if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
+
+                tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+                #println("fft1: $tt1temp ")
                 FFTDict[stn1] = FFT1
                 FFT1
             end
         catch y
             push!(tserrorList, "$tstamp/$stn1")
             filter!(a->a≠stn1, stlist)
-            println("$tstamp: $stn1 encountered an error on FFT. Skipping.")
+            println("$tstamp: $stn1 encountered an error on FFT1. Skipping.")
             continue
         end
+
+        # Evaluate Memory use
+        # if stniter == 1
+        #     memory = trunc(Int64, sizeof(FFT1) * length(stlist) / 1e3) #[GB]
+        #     println("Maximum memory use can be: $memory [KB]")
+        # end
 
         # iterate over station list again
         for stn2 in stlist[stniter:end]
@@ -137,59 +155,73 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
 
             # cross- or cross-channel correlation
             elseif ct in corrtype
-                # read station SeisChannels into SeisData before FFT
-                S2 = try
-                    SeisData(data["$tstamp/$stn2"])
-                catch;
-                    push!(tserrorList, "$tstamp/$stn2")
-                    filter!(a->a≠stn2, stlist)
-                    println("$tstamp: $stn2 encountered an error on read. Skipping.")
-                    continue
-                end
-
-                if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
-                delete!(S2[1].misc, "kurtosis")
-                delete!(S2[1].misc, "eqtimewindow")
-
-                # do not attempt fft if data was not available
-                try
-                    if S2[1].misc["dlerror"] == 1
-                        push!(tserrorList, "$tstamp/$stn2")
-                        filter!(a->a≠stn2, stlist)
-                        println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
-                        continue
-                    end
-                catch;
-                    # assume that the key dlerror does not exist (data not downloaded via SeisDownload)
-                end
-
-                # make sure the data is the proper length to avoid dimension mismatch
-                npts2 = Int(time_unit * S2[1].fs)
-                if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[2,1]=npts2 end
 
                 # try to read FFT from cached FFTs
                 FFT2 = try
                     if stn2 in keys(FFTDict)
                         FFTDict[stn2]
                     else
-                        FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+                        # read station SeisChannels into SeisData before FFT
+                        S2 = try
+                            #SeisData(data["$tstamp/$stn2"])
+                            SeisData(inFile["$tstamp/$stn2"])
+                        catch;
+                            push!(tserrorList, "$tstamp/$stn2")
+                            filter!(a->a≠stn2, stlist)
+                            println("$tstamp: $stn2 encountered an error on read. Skipping.")
+                            continue
+                        end
+
+                        if size(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
+                        delete!(S2[1].misc, "kurtosis")
+                        delete!(S2[1].misc, "eqtimewindow")
+
+                        # do not attempt fft if data was not available
+                        try
+                            if S2[1].misc["dlerror"] == 1
+                                push!(tserrorList, "$tstamp/$stn2")
+                                filter!(a->a≠stn2, stlist)
+                                println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
+                                continue
+                            end
+                        catch;
+                            # assume that the key dlerror does not exist (data not downloaded via SeisDownload)
+                        end
+
+                        # make sure the data is the proper length to avoid dimension mismatch
+                        npts2 = Int(time_unit * S2[1].fs)
+                        if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[end,1]=npts2 end
+
+                        tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+                        #print("fft2: $tt2temp ")
                         FFTDict[stn2] = FFT2
                         FFT2
                     end
                 catch y
                     push!(tserrorList, "$tstamp/$stn2")
                     filter!(a->a≠stn2, stlist)
-                    println("$tstamp: $stn2 encountered an error on FFT. Skipping.")
+                    println("$tstamp: $stn2 encountered an error on FFT2. Skipping.")
                     continue
                 end
+
             else
-                println("Skipping cross-correlation of $stn1 and $stn2.")
+                #println("Skipping cross-correlation of $stn1 and $stn2.")
                 continue
             end
 
-            # compute correlation using SeisNoise.jl -- returns type CorrData
-            xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
+            # do not attempt fft if distance of station pair is too large (dist > maxdistance)
+            #print(dist(S1[1].loc, S2[1].loc)./1e3)
+            #println(" [km]")
+            if maxdistance == false
+                # compute cc
+            elseif dist(FFT1.loc, FFT2.loc) > maxdistance
+                #println("$tstamp: distance $stn1 - $stn2 is greater than maxdistance. Skipping.")
+                continue;
+            end
 
+            # compute correlation using SeisNoise.jl -- returns type CorrData
+            tt3temp = @elapsed xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
+            #print("xcorr: $tt3temp ")
             varname = "$tstamp/$stn1.$stn2"
             try
                 # compute distance between stations
@@ -205,13 +237,14 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 println("$stn1 and $stn2 have no overlap at $tstamp.")
                 push!(tserrorList, "$tstamp/$stn1")
             end
+
         end
 
         # release memory held by the FFT and time series for this station
         delete!(FFTDict, stn1)
-        delete!(data, "$tstamp/$stn1")
     end
     outFile["info/errors"] = tserrorList
+    close(inFile)
     close(outFile)
 end
 
