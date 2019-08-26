@@ -9,7 +9,7 @@ export read_JLD22Dict, save_CorrData2JLD2, save_Dict2JLD2, save_Array2JLD2
 function read_JLD22Dict(inFile::Array{JLD2.JLDFile{JLD2.MmapIO},1}, tstamplist::AbstractArray)
     # create a list of dictionaries containing input data for each time step
     # this assumes inFile is in the same order as tstamplist
-    dsets = [Dict("$ts/$stn" => inFile[i]["$ts/$stn"] for stn in keys(inFile[i][ts])) for (i, ts) in enumerate(tstamplist)]
+    dsets = [Dict("$ts/$stn" => @views inFile[i]["$ts/$stn"] for stn in keys(inFile[i][ts])) for (i, ts) in enumerate(tstamplist)]
     return dsets
 end
 

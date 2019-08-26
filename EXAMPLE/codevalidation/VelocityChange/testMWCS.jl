@@ -3,17 +3,27 @@ using SeisIO, SeisNoise, JLD2, PlotlyJS
 # This is a script to test the functionality of the MWCS functions of Noise.jl
 # This assumes synthetic data generated via genSynth.jl
 
-function testMWCS(finame::String, InputDict::Dict, windowlenlist::Array{Float64,1}, winsteplist::Array{Float64,1}, smoothlist::Array{Int64,1}, type::String)
+function testMWCS(finame::String, foname::String, InputDict::Dict, windowlenlist::Array{Float64,1}, winsteplist::Array{Float64,1}, smoothlist::Array{Int64,1}, type::String; plot::Bool=false)
     valData = jldopen(finame)
     dvVlist = valData["info/dvVlist"]
     noiselist = valData["info/noiselist"]
 
-    for dvV in dvVlist[1:10:end]
-        for noiselvl in noiselist[1:1]
+    f_err = jldopen(foname, "a+")
+    # hacky way to write metadata only once
+    if type == "realData"
+        f_err["info/dvV"] = dvVlist
+        f_err["info/noise"] = noiselist
+        f_err["info/winstep"] = winsteplist
+        f_err["info/winlen"] = windowlenlist
+        f_err["info/smooth"] = smoothlist
+    end
+    for dvV in dvVlist
+        println("dv/v: $dvV")
+        for noiselvl in noiselist
             for win_len in windowlenlist, win_step in windowsteplist, smooth in smoothlist
                 signals = valData["$type/$dvV.$noiselvl"]
-                u1 = signals[1]
-                u2 = signals[2]
+                u1 = signals["ref"]
+                u2 = signals["cur"]
 
                 dist = 0.0
                 true_dtt = -dvV
@@ -29,10 +39,11 @@ function testMWCS(finame::String, InputDict::Dict, windowlenlist::Array{Float64,
                          win_step,
                          smooth)
                 catch y
-                    println("Failed on first step")
-                    println(y)
+                    #println("Failed on first step")
+                    #println(y)
                     continue
                 end
+
                 dt .*= 2π
                 err .*= 2π
                 # compute WLS regression for dt/t
@@ -47,12 +58,14 @@ function testMWCS(finame::String, InputDict::Dict, windowlenlist::Array{Float64,
                              InputDict["dtt_minlag"],
                              InputDict["dtt_width"],
                              InputDict["dtt_sides"])
+
                 catch y
-                    println("Failed on second step")
-                    println(y)
+                    #println("Failed on second step")
+                    #println(y)
                     continue
                 end
 
+                #=
                 # Report performance
                 println("Noise level: $(noiselvl*100)%")
                 println("Smoothing: $smooth")
@@ -61,10 +74,17 @@ function testMWCS(finame::String, InputDict::Dict, windowlenlist::Array{Float64,
                 println("Estimated: $(-m0*100)%")
                 error = abs((m0 - true_dtt)/true_dtt)*100
                 println("Error: $error%")
-                plot_dtt(time_axis, dt, coh, m0, 0, err, true_dtt)
+                =#
+
+                if plot==true
+                    plot_dtt(time_axis, dt, coh, m0, 0, err, true_dtt)
+                end
+
+                f_err["$type/$dvV.$noiselvl/$win_len.$win_step.$smooth"] = [m, em]
             end
         end
     end
+    close(f_err)
     close(valData)
 end
 
@@ -90,22 +110,38 @@ function plot_dtt(time_axis, dt, coh, m, a, err, true_dtt)
 end
 
 # MWCS input parameters
-InputDict = Dict( "freqmin"            => 0.1,
-                  "freqmax"            => 9.9,
-                  "fs"                 => 20.0,
-                  "mintimelag"         => 0.0,
-                  "dtt_width"          => 200.0,
-                  "window_length"      => 0,
-                  "window_step"        => 0,
-                  "dtt_lag"            => "static",
-                  "dtt_v"              => 1.0,
-                  "dtt_minlag"         => 0.0,
-                  "dtt_sides"          => "both",
-                  "smoothing_half_win" => 0)
+InputDict_real = Dict( "freqmin"            => 0.1,
+                       "freqmax"            => 9.9,
+                       "fs"                 => 20.0,
+                       "mintimelag"         => -100.0,
+                       "dtt_width"          => 200.0,
+                       "dtt_lag"            => "static",
+                       "dtt_v"              => 1.0,
+                       "dtt_minlag"         => 0.0,
+                       "dtt_sides"          => "both")
+
+InputDict_synth = Dict( "freqmin"            => 0.1,
+                        "freqmax"            => 9.9,
+                        "fs"                 => 20.0,
+                        "mintimelag"         => 0.0,
+                        "dtt_width"          => 200.0,
+                        "dtt_lag"            => "static",
+                        "dtt_v"              => 1.0,
+                        "dtt_minlag"         => 0.0,
+                        "dtt_sides"          => "both")
 
 finame = "verificationData.jld2"
-windowlenlist = collect(40.:10.:60.)
+foname = "verificationDataError_MWCS_real.jld2"
+windowlenlist = collect(20.:10.:60.)
 windowsteplist = [10.0]
-smoothlist = [7, 11, 15, 19]
-type = "dampedSinusoid"
-testMWCS(finame, InputDict, windowlenlist, windowsteplist, smoothlist, type)
+smoothlist = [3, 9, 15, 21]
+type = "realData"
+
+for type in ["rickerConv", "dampedSinusoid", "realData"]
+    if type == "realData"
+        InputDict = InputDict_real
+    else
+        InputDict = InputDict_synth
+    end
+    testMWCS(finame, foname, InputDict, windowlenlist, windowsteplist, smoothlist, type)
+end

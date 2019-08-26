@@ -1,6 +1,6 @@
-export generateSignal, stretchData, addNoise
+export generateSignal, stretchData, addNoise, addNoise!
 
-using Random, DSP, Dierckx, FileIO, JLD2
+using Random, DSP, Dierckx, FileIO, JLD2, SeisIO, FFTW
 
 include("waves.jl")
 
@@ -24,27 +24,39 @@ Generate a signal of type "ricker" or "dampedSinusoid".
 - `t`::Array{Float64,1}    : Time axis
 
 """
-function generateSignal(type::String; params::Dict{String,Real}=Dict(), sparse::Int64=0, seed::Int64=66473)
+function generateSignal(type::String, params::Dict{String,Real}; sparse::Int64=0, seed::Int64=66473, stretchSource::Float64=0.0)
     if type=="ricker"
         # unpack parameters
         f    = params["f"]    # peak frequency
         dt   = params["dt"]   # sampling interval
         npr  = params["npr"]  # number of points in the Ricker wavelet
         npts = params["npts"] # number of points in the generated signal
+        m    = params["m"]    # power for reflectivity series
 
         # generate a ricker wavelet
         (w, t) = ricker(f=f, n=npr, dt=dt)
 
+        if stretchSource != 0.0
+            spectrum = rfft(w)
+            stAmpSpec, st = stretchData(real(spectrum), dt, stretchSource)
+            spectrum = stAmpSpec .+ imag(spectrum).*im
+            w = irfft(spectrum, length(w))
+        end
+
         # generate a random reflectivity series
         rng = MersenneTwister(seed)
         f = randn(rng, Float64, npts)
+
         if sparse!=0
             r=collect(1:npts)
             f[r .% sparse .!= 0] .= 0
         end
+        # raise output from randn to an integral power. See <<Numerical Methods of
+        # Explorational Seismology>> page 77.
+        f = sign.(f) .* abs.(f).^m
 
         # convolve reflectivity series with ricker wavelet
-        u0 = conv(f,w)[1:npts]
+        u0 = conv(f,w)[convert(Int64, npts-floor(npts/2)):convert(Int64, npts+floor(npts/2))]
 
     elseif type=="dampedSinusoid"
         # unpack parameters
@@ -54,10 +66,43 @@ function generateSignal(type::String; params::Dict{String,Real}=Dict(), sparse::
         η    = params["η"]    # shift in function maximum
         λ    = params["λ"]    # decay constant for the exponential decay
         dt   = params["dt"]   # sampling interval
-        t0   = params["t0"]   # leftmost time
+        t0   = params["t0"]   # start time
         npts = params["npts"] # number of points in the generated signal
 
         u0, t = dampedSinusoid(A=A, ω=ω, ϕ=ϕ, η=η, n=npts, dt=dt, t0=t0, λ=λ)
+
+    elseif type=="sinc"
+        # unpack parameters
+        A    = params["A"]
+        ω    = params["ω"]    # angular frequency of the sinusoid
+        ϕ    = params["ϕ"]    # phase shift for the sinusoid
+        dt   = params["dt"]   # sampling interval
+        t0   = params["t0"]   # start time
+        npts = params["npts"] # number of points in the generated signal
+
+        u0, t = sinc(A=A, ω=ω, ϕ=ϕ, dt=dt, t0=t0, n=npts)
+
+    elseif type=="chirp"
+        # unpack parameters
+        c     = params["c"]     # phase velocity
+        tp    = params["tp"]    # period
+        mintp = params["mintp"] # minimum period
+        maxtp = params["maxtp"] # maximum period
+        dist  = params["dist"]  # distance
+        npts  = params["npts"]  # number of points in the generated signal
+        dt    = params["dt"]    # sampling interval
+        t0    = params["t0"]    # start time
+
+        u0, t = chirp(c=c, tp=tp, mintp=mintp, maxtp=maxtp, dist=dist, n=npts, dt=dt, t0=t0)
+
+    elseif type=="spectSynth"
+        # unpack parameters
+        A    = params["A"]
+        dt   = params["dt"]
+        t0   = params["t0"]
+        npts = params["npts"]
+
+        u0, t = spectSynth(A=A, dt=dt, t0=t0, n=npts)
     end
 
     return u0, t
@@ -79,14 +124,14 @@ Linearly stretch a given signal, u0, by some factor given by a homogenous relati
 
 # Output
 - `u1`::Array{Float64,1}    : Stretched signal
-- `st`::Array{Float64,1}    : Stretched time axis
+- `tvec`::Array{Float64,1}    : Unstretched time axis
 
 """
 function stretchData(u0::Union{Array{Float32,1},Array{Float64,1}}, dt::Float64, dvV::Float64; starttime::Float64=0.0, stloc::Float64=0.0, n::Float64=0.0, seed::Int64=66473)
-    tvec = collect(( 0:length(u0)-1) .* dt) .+ starttime
+    tvec = collect((0:length(u0)-1) .* dt) .+ starttime
     st = (tvec.-stloc) .* dvV
 
-    if (n != 0.0) st = addNoise(st, n) end
+    if (n != 0.0) addNoise!(st, n, seed=seed) end
 
     tvec2 = tvec .+ st
 
@@ -99,7 +144,7 @@ end
 
 """
 
-    addNoise(signal::Array{Float64,1}, level::Float64; seed::Int64=66743)
+    addNoise!(signal::Array{Float64,1}, level::Float64; seed::Int64=66743)
 
 Add noise to an array by some given mulitple of the maximum value.
 
@@ -112,11 +157,19 @@ Add noise to an array by some given mulitple of the maximum value.
 - `signal`::Array{Float64,1}    : Signal with added noise
 
 """
-function addNoise(signal::Array{Float64,1}, level::Float64; seed::Int64=66473)
+function addNoise!(signal::Union{Array{Float32,1},Array{Float64,1}}, level::Float64; percent::Bool=true, seed::Int64=66473, freqmin::Float64=0.1, freqmax::Float64=9.99, fs=20.0, corners::Int64=4, zerophase::Bool=false)
     rng = MersenneTwister(seed)
     noise = randn(rng, Float64, length(signal))
-    noise = level * maximum(abs.(signal)).*(noise./maximum(abs.(signal)))
-    signal = signal .+ noise
+    bandpass!(noise, freqmin, freqmax, fs, corners=corners, zerophase=zerophase)
+    noise ./= maximum(abs.(noise)) # normalize noise
+    noise .*= level # scale noise to given level
+    if percent noise .*= maximum(abs.(signal)) end
+    signal .+= noise
 
-    return signal
+    return nothing
 end
+addNoise(signal::Union{Array{Float32,1},Array{Float64,1}}, level::Float64;
+         seed::Int64=66473, freqmin::Float64=0.1, freqmax::Float64=9.99, fs=20.0,
+         corners::Int64=4, zerophase::Bool=false) = (U = deepcopy(signal);
+         addNoise!(U, level, seed=seed, freqmin=freqmin, freqmax=freqmax, fs=fs,
+         corners=corners, zerophase=zerophase); return U)

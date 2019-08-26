@@ -1,121 +1,58 @@
-using SeisIO, JLD2, SeisNoise, PlotlyJS
+using SeisIO, JLD2, SeisNoise, Statistics, PlotlyJS
 include("utils.jl")
 include("io.jl")
+include("stacking.jl")
 
 """
+    compute_reference_xcorr(tstamp::String, basefiname::String; phase_smoothing::Float64=0., stack::String="linear", reference::String="", thresh::Float64=-1.0)
 
-    compute_reference_xcorr(finame::String, foname::String)
-
-Compute cross-correlation function and save data in jld2 file with SeisData format.
+Stack all cross-correlation functions for all given station pairs to generate a reference cross-correlation.
 
 # Arguments
-- `finame::String,`    : Input file name e.g. "./inputData/BPnetwork.jld2"
-- `foname::String,`    : Output file name for fully stacked xcorrs e.g. "referenceXcorr.jld2"
-- `xcorrSize::Int,`    : Number of points in a cross-correlation window
+- `tstamp::String`    :
+- `basefiname::String,`    : Input base file name e.g. "./inputData/BPnetwork"
+- `phase_smoothing::Float64`    : Level of phase_smoothing (0 for linear stacking)
+- `stack::String`     : "selective" for selective stacking and "linear" for linear stacking
+- `reference::String`    : Path to the reference used in selective stacking
+- `thresh::Float64`     : Threshold used for selective stacking
 
 # Output
 - `foname.jld2`    : contains arrays of reference cross-correlations for each station pair
-
 """
-function compute_reference_xcorr(finame::String, foname::String, xcorrSize::Int)
-    f = jldopen(finame)
+function compute_reference_xcorr(tstamp::String, basefiname::String; phase_smoothing::Float64=0., stack::String="linear", reference::String="", thresh::Float64=-1.0)
+    # hold reference xcorrs in memory and write all at once
+    ref_dict = Dict()
 
-    corrstationlist = f["info/corrstationlist"] # names of station pairs
-    tslist = f["info/timestamplist"] # time stamps
-    reference_xcorrnames = []
-
-    # iterate over correlation type
-    for ct in keys(corrstationlist)
-        # iterate over station pairs
-        for stnum=1:size(corrstationlist[ct])[2]
-            # get name of station pair
-            stn1 = corrstationlist[ct][1, stnum]
-            stn2 = corrstationlist[ct][2, stnum]
-            varname = "$stn1" .* "." .* "$stn2"
-            println(varname)
-
-            # initialize array to hold stacked data
-            stackData = zeros(xcorrSize)
-            # num of summed xcorrs
-            numxcorr = 0
-            # compute full stack for this station pair
-            for tstamp in tslist
-                # do not attempt stacking if there was an error in cross-correlation
-                if "$tstamp/$stn1" in f["info/tserrors"] || "$tstamp/$stn2" in f["info/tserrors"]
-                    continue
-                end
-
-                # read data and stack
-                data = try f["$tstamp/$varname"].corr catch; continue end
-                stackData += sum(data, dims=2)
-                numxcorr += size(data)[2]
-            end
-            # compute average
-            stackData /= numxcorr
-
-            # save reference xcorr
-            save_Array2JLD2(foname, "$varname", stackData)
-            push!(reference_xcorrnames, varname)
-        end
-    end
-    close(f)
-    save_Array2JLD2(foname, "info/reference_xcorrnames", reference_xcorrnames)
-end
-
-"""
-
-    convergence(finame::String, foname::String)
-
-Compute the RMS error between progressively longer stacks of cross-correlations and a reference cross-correlation
-
-# Arguments
-- `finame::String,`    : Input file name for unstacked cross-correlations e.g. "./inputData/BPnetwork.jld2"
-- `refname::String,`    : Input file name for reference cross-corrleations e.g. "./inputData/BPnetwork.jld2"
-- `foname::String,`    : Output file name for fully stacked xcorrs e.g. "referenceXcorr.jld2"
-- `skipoverlap::Bool`    : Whether or not to skip overlap in cross-correlation windows. If cross-correlations were computed
-                           with no overlap, set this to false to ensure no time is skipped.
-
-# Output
-- `foname.jld2`    : contains arrays of RMS errors for progressively longer stacks of cross-correlations
-
-"""
-function convergence(finame::String, refname::String, foname::String, skipoverlap::Bool=false)
-    f = jldopen(finame)
-    ref_f = jldopen(refname)
-
-    tslist = f["info/timestamplist"] # time stamps
-    stname = ref_f["info/reference_xcorrnames"] # station pairs with computed reference cross-correlations
+    # read unstacked xcorrs for each time stamp
+    f_cur = jldopen(basefiname*".$tstamp.jld2")
+    grp = f_cur[tstamp] # xcorrs
+    println("$tstamp")
 
     # iterate over station pairs
-    for stpair in stname
-        # reference xcorr
-        ref = ref_f[stpair]
-        # initialize running stack with size of the reference
-        stackData = zeros(size(ref))
-        # initialize rmse array
-        rms_conv = []
+    for pair in sort(keys(grp))
+        # TODO: use only unique station pairings when creating references. Currently no guarantee of uniqueness (reverse can exist)
+        # load xcorr
+        xcorr = try grp[pair] catch; continue end
+        #remove_nan!(xcorr)
 
-        iter=1
-        # iterate over timestamps
-        for tstamp in tslist
-            println("Processing $stpair/$tstamp")
-            data = try f["$tstamp/$stpair"].corr catch; continue end
-            # iterate over windowed cross-correlations
-            for i=1:size(data)[2]
-                if skipoverlap
-                    # assume overlap is half of window length and skip overlapping windows
-                    i=2*i - 1
-                end
-                # keep running sum of cross-correlations
-                stackData += data[:, i]
-
-                # compute RMS error of the average of the running sum with the reference
-                push!(rms_conv, rms(ref[:,1], stackData[:,1] ./ iter))
-                # keep track of the number of xcorrs in the running sum
-                iter += 1
-            end
+        # stack xcorrs over length of CorrData object using either "selective" stacking or "linear" stacking
+        if stack=="selective"
+            f_exref = jldopen(reference)
+            ref = f_exref[pair]
+            close(f_exref)
+            xcorr, rmList = selective_stacking(xcorr, ref, threshold=thresh)
+        else
+            stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
         end
-        # write RMS errors to foname
-        save_Array2JLD2(foname, stpair, rms_conv)
+
+        # stack xcorrs if they have a key, assign key if not
+        if haskey(ref_dict, pair)
+            ref_dict[pair].corr .+= xcorr.corr
+        else
+            ref_dict[pair] = xcorr
+        end
     end
+    close(f_cur) # current xcorr file
+
+    return ref_dict
 end

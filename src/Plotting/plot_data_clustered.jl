@@ -3,6 +3,7 @@ using SeisIO, SeisNoise, JLD2, PlotlyJS, StatsBase, Sockets, ORCA, Statistics
 include("../pairing.jl")
 include("../reference.jl")
 include("../stacking.jl")
+include("../clustered_stacking.jl")
 
 function plot_seismograms(finame::String, stn::String; norm_factor=nothing, sparse::Int64=1, foname::String="", show::Bool=true, timeslice::Array{Int64,1}=[1, -1])
     f = jldopen(finame)
@@ -78,14 +79,21 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
     if type=="heatmap" xcorr_heat = []; tscounter=0 end
 
     if stack=="selective"
-        rmList = Array{Float64,1}()
+        init_coef_series =  Array{Float64,1}()
+        max_coef_series =  Array{Float64,1}()
+        #rmList = Array{Float64,1}()
     end
 
     if timeslice[2]==-1
         timeslice=[1,length(timestamplist)]
     end
 
+    npts = 0
+
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
+
+        println(titer)
+
         f_cur = jldopen(basefiname*".$time.jld2")
 
         # load cross-correlation or its reverse
@@ -103,16 +111,22 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
                     if filter!=false
                         ref.corr = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
                     end
-                    xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter)
+                    #xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
+                    xcorr, initcoef, maxcoef = clustered_selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
                     close(f_ref)
                 else
-                    xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter)
+                    #xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter, slice=slice)
+                    xcorr, initcoef, maxcoef = clustered_selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
                 end
-                nRem = length(findall(x->(x<threshold), ccList))
-                push!(rmList, nRem / nWins)
+                #nRem = length(findall(x->(x<threshold), ccList))
+                #push!(rmList, nRem / nWins)
+                push!(init_coef_series, initcoef)
+                push!(max_coef_series, maxcoef)
             else
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
+
+            npts = size(xcorr.corr)[1]
 
         elseif stnpairrev ∈ keys(f_cur[time])
             xcorr = f_cur["$time/$stnpairrev"]
@@ -127,21 +141,34 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
                     if filter!=false
                         ref.corr = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
                     end
-                    xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter)
+                    #xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
+                    xcorr, initcoef, maxcoef = clustered_selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
+
                     close(f_ref)
                 else
-                    xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter)
+                    #xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter, slice=slice)
+                    xcorr, initcoef, maxcoef = clustered_selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
+
                 end
-                nRem = length(findall(x->(x<threshold), ccList))
-                push!(rmList, nRem / nWins)
+                #nRem = length(findall(x->(x<threshold), ccList))
+                #push!(rmList, nRem / nWins)
+                push!(init_coef_series, initcoef)
+                push!(max_coef_series, maxcoef)
             else
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
             xcorr.corr = reverse(xcorr.corr, dims=1)
 
+            npts = size(xcorr.corr)[1]
+
         else
             xcorr = CorrData()
-            xcorr.corr = zeros(4001,1)
+            if npts == 0
+                #error("Cannot identify datalength")
+                println("Cannot identify datalength")
+                continue
+            end
+            xcorr.corr = zeros(npts,1)
         end
 
         # make lags visible outside of loop
@@ -157,6 +184,7 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
 
             elseif type=="heatmap"
                 # append to array for heat map. We cannot plot before it is fully filled
+                #println(length(xcorr.corr[:, 1]))
                 append!(xcorr_heat, (xcorr.corr[:, 1]./ (norm_factor)))
                 tscounter+=1
             end
@@ -168,14 +196,31 @@ function plot_xcorrs(basefiname::String, stn1::String, stn2::String; reference::
     end
 
     if stack=="selective"
-        p1=PlotlyJS.plot(rmList.*100)
+        #p1=PlotlyJS.plot(rmList.*100)
+        trace1=PlotlyJS.scatter(;y=init_coef_series, mode="lines", line_color="rgb(0,0,0)", name="Initial correlation coefficient")
+        trace2=PlotlyJS.scatter(;y=max_coef_series, mode="lines", line_color="rgb(255,0,0)", name="Maximum correlation coefficient (After clustered)")
+        layout = Layout(width=1600, height=600,
+                xaxis_title="Days",
+                yaxis_title="Correlation coefficient",
+                font =attr(size=18),
+                showlegend=true,
+                #xaxis_range=[0, 180],
+                yaxis_range=[0.0, 1.0],
+                title="Clustered cross-correlation function",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)")
+        p1=PlotlyJS.plot([trace1, trace2], layout)
         display(p1)
+        if foname !== ""
+            PlotlyJS.savefig(p1, "./fig/crosscoef_series.png")
+        end
         readline()
     end
 
     if type=="heatmap"
         # dont plot if no cross-correlations were found. This would give div by 0
         if tscounter==0 println("No cross-correlations to plot. Exiting."); exit() end
+        #println([size(xcorr_heat), tscounter])
         xcorr_heat = reshape(xcorr_heat, convert(Int64, length(xcorr_heat)/tscounter), tscounter)
         trace = PlotlyJS.heatmap(x=lags, z=xcorr_heat)
         addtraces!(p, trace)
@@ -305,7 +350,7 @@ function plot_reference(finame::String, stn1::String, stn2::String)
                     plot_bgcolor="rgba(0,0,0,0)")
 
     p = PlotlyJS.plot([NaN], layout)
-    trace1 = PlotlyJS.scatter(;x=lags, y=data.corr[:, 1], mode="lines", line_color="rgb(0,0,0)")
+    trace1 = scatter(;x=lags, y=data.corr[:, 1], mode="lines", line_color="rgb(0,0,0)")
     addtraces!(p, trace1)
     deletetraces!(p, 1)
     display(p)
@@ -328,7 +373,7 @@ function plot_convergence(finame::String, stn1::String, stn2::String; maxlag::Fl
 
     p = PlotlyJS.plot([NaN], layout)
 
-    trace1 = PlotlyJS.scatter(;x=collect(1:length(data))./46, y=data, mode="lines", line_color="rgb(0,0,0)")
+    trace1 = scatter(;x=collect(1:length(data))./46, y=data, mode="lines", line_color="rgb(0,0,0)")
     addtraces!(p, trace1)
     deletetraces!(p, 1)
     display(p)
@@ -356,7 +401,7 @@ function plot_convergence(finame::String; sparse::Int64=1)
             color="rgba(0,0,0,0.1)"
         end
         data = f[stpair]
-        trace = PlotlyJS.scatter(;x=(collect(1:length(data))[1:sparse:end])./46, y=data[1:sparse:end], mode="lines", line_color=color, name=stpair)
+        trace = scatter(;x=(collect(1:length(data))[1:sparse:end])./46, y=data[1:sparse:end], mode="lines", line_color=color, name=stpair)
         addtraces!(p, trace)
     end
     deletetraces!(p, 1)

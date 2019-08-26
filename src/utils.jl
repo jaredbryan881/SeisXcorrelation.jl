@@ -1,5 +1,5 @@
-using Geodesy
-export rms, dist
+using Geodesy, SeisIO
+export rms, dist, normalize, normalize!
 
 """
     rms(A::AbstractArray, B::AbstractArray)
@@ -41,6 +41,17 @@ function window_read(len::Int64, max_len::Int64)
 
     return windows
 end
+
+"""
+    normalize!(x::AbstractArray; mag::Float64=1.0)
+
+Normalize an array and scale to a given magnitude.
+"""
+function normalize!(x::AbstractArray; mag::Float64=1.0)
+    x ./= maximum(abs.(x)) .* mag
+    return nothing
+end
+normalize(x::AbstractArray; mag::Float64=1.0) = (U = deepcopy(x); normalize!(U, mag=mag); return U)
 
 """
     Base.copy(x::T)

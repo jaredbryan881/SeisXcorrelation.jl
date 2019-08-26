@@ -3,19 +3,26 @@ using SeisIO, SeisNoise, JLD2, PlotlyJS
 # This script tests the functionality of Stretching.jl from Noise.jl
 # This assumes data generated via genSynth.jl
 
-function testStretching(finame::String, InputDict::Dict, windowlenlist::Array{Float64,1}, winsteplist::Array{Float64,1}, type::String)
+function testStretching(finame::String, foname::String, InputDict::Dict, windowlenlist::Array{Float64,1}, winsteplist::Array{Float64,1}, type::String)
     valData = jldopen(finame)
     dvVlist = valData["info/dvVlist"]
     noiselist = valData["info/noiselist"]
 
-    for dvV in dvVlist[1:10:end]
-        for noiselvl in noiselist[1:1]
+    f_err = jldopen(foname, "a+")
+    if type == "realData"
+        f_err["info/dvV"] = dvVlist
+        f_err["info/noise"] = noiselist
+    end
+
+    for dvV in dvVlist
+        println("dv/v: $dvV")
+        for noiselvl in noiselist
             for win_len in windowlenlist, win_step in windowsteplist
                 signals = valData["$type/$dvV.$noiselvl"]
-                ref = signals[1]
-                cur = signals[2]
+                ref = signals["ref"]
+                cur = signals["cur"]
 
-                time_axis = collect(0:1/InputDict["fs"]:200)
+                time_axis = collect(InputDict["mintimelag"]:1/InputDict["fs"]:InputDict["mintimelag"]+InputDict["dtt_width"])
 
                 # allow windowed stretching analysis
                 if win_step == 0.0
@@ -27,8 +34,10 @@ function testStretching(finame::String, InputDict::Dict, windowlenlist::Array{Fl
                     minind = 1:window_step_samples:length(ref) - window_length_samples
                 end
 
+                # number of windows
                 N = length(minind)
                 dv_list = zeros(N)
+                err_list = zeros(N)
 
                 # iterate over windows, report average dv/v
                 for ii=1:N
@@ -42,33 +51,49 @@ function testStretching(finame::String, InputDict::Dict, windowlenlist::Array{Fl
                                                           dvmin=InputDict["dvmin"],
                                                           dvmax=InputDict["dvmax"])
                     dv_list[ii] = dv
+                    err_list[ii] = err
                 end
+                comp_dvV = sum(dv_list)/N
+                comp_err = sum(err_list)/N
 
-                # Report performance
-                println("Noise level: $(noiselvl*100)")
-                println("True: $(dvV*100)%")
-                println("Estimated: $(sum(dv_list)/N)%")
-                error = abs((sum(dv_list)/N) - (dvV*100)) / (dvV)
-                println("Error: $error%")
-                println("")
+                f_err["$type/$dvV.$noiselvl"] = [comp_dvV, comp_err]
             end
         end
     end
+    close(f_err)
     close(valData)
 end
 
 # MWCS input parameters
-InputDict = Dict( "freqmin"       => 0.1,
-                  "freqmax"       => 9.9,
-                  "fs"            => 20.0,
-                  "mintimelag"    => 0.0,
-                  "dtt_width"     => 200.0,
-                  "dvmin"         => -0.015,
-                  "dvmax"         => 0.015,
-                  "ntrial"        => 100)
+InputDict_real = Dict( "freqmin"    => 0.1,
+                       "freqmax"    => 9.99,
+                       "fs"         => 20.0,
+                       "mintimelag" => -100.0,
+                       "dtt_width"  => 200.0,
+                       "dvmin"      => -0.04,
+                       "dvmax"      => 0.04,
+                       "ntrial"     => 100 )
+
+InputDict_synth = Dict( "freqmin"    => 0.1,
+                        "freqmax"    => 9.99,
+                        "fs"         => 20.0,
+                        "mintimelag" => 0.0,
+                        "dtt_width"  => 200.0,
+                        "dvmin"      => -0.04,
+                        "dvmax"      => 0.04,
+                        "ntrial"     => 100 )
 
 finame = "verificationData.jld2"
-windowlenlist = [300.0]
+foname = "verificationDataError_stretching.jld2"
+windowlenlist = [200.0]
 windowsteplist = [0.0]
-type = "realData"
-testStretching(finame, InputDict, windowlenlist, windowsteplist, type)
+type = "rickerConv"
+
+for type in ["rickerConv", "dampedSinusoid", "realData"]
+    if type == "realData"
+        InputDict = InputDict_real
+    else
+        InputDict = InputDict_synth
+    end
+    testStretching(finame, foname, InputDict, windowlenlist, windowsteplist, type)
+end
