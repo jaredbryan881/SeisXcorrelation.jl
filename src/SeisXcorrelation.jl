@@ -6,17 +6,17 @@ using Distributed
 # using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, Sockets, ORCA
 
 # read and write using jld2
-include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/io.jl")
+@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/io.jl")
 # generate, sort, and classify station pairs
-include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/pairing.jl")
+@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/pairing.jl")
 # miscellaneous utilities such as distance computation, windowing, and normalization
-include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/utils.jl")
+@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/utils.jl")
 # splitting utilities for high-order cross-correlation coda extraction
-include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/partition.jl")
+@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/partition.jl")
 # FFT wrapper for high-order cross-correlation
-include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/fft.jl")
+@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/fft.jl")
 # cross-correlation wrapper for high-order cross-correlation
-include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/correlate.jl")
+@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/correlate.jl")
 
 export seisxcorrelation, seisxcorrelation_highorder
 
