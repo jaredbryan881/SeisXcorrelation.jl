@@ -1,7 +1,9 @@
 __precompile__()
 #module SeisXcorrelation
 
-using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, Sockets, ORCA
+using Distributed
+@everywhere using SeisIO, SeisNoise, Dates, FFTW, JLD2, Sockets, ORCA
+# using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, Sockets, ORCA
 
 # read and write using jld2
 include("io.jl")
