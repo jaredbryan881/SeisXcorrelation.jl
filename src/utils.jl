@@ -1,4 +1,5 @@
-using Geodesy, SeisIO
+using Distributed
+@everywhere using Geodesy, SeisIO
 export rms, dist, normalize, normalize!
 
 """
