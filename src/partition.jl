@@ -1,5 +1,4 @@
-using Distributed
-@everywhere using SeisIO, SeisNoise
+using SeisIO, SeisNoise
 export partition
 
 """
