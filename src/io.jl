@@ -1,5 +1,5 @@
 using Distributed
-@everywhere using SeisIO, JLD2
+@everywhere using SeisIO, SeisNoise, JLD2
 export read_JLD22Dict, save_CorrData2JLD2, save_Dict2JLD2, save_Array2JLD2
 
 """
