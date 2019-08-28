@@ -342,7 +342,8 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
         figdirtemp = split(basefiname, "/")
         figdir = join(figdirtemp[1:end-2], "/")*"/fig"
         if !ispath(figdir) mkpath(figdir); end
-        figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
+        #figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
+        figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
         PlotlyJS.savefig(p, figname)
     end
 end
