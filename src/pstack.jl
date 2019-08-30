@@ -73,7 +73,7 @@ function pstack(InputDict::Dict)
     InputDict["stapairlist"] = stapairlist
 
     #=== Debug ===#
-    stapairlist = collect(zip(["NC.PADB..SHZ"], ["NC.PTA..SHZ"]))  
+    stapairlist = collect(zip(["NC.PADB..SHZ"], ["NC.PTA..SHZ"]))
 
     # Parallelized by station pairs
     pmap(x -> map_stack(InputDict, x), stapairlist)
@@ -157,7 +157,6 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
     tscount = 0
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
-	println(titer)
 
         f_cur = jldopen(basefiname*".$time.jld2")
         stnkeys = keys(f_cur[time])
@@ -205,7 +204,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
             end
 
             #if isempty(xcorr_temp.id)
-	    if xcorr_temp.fs == 0.0
+	    	if xcorr_temp.fs == 0.0
                 # store meta data to xcorr_temp
                 xcorr_temp = deepcopy(xcorr)
                 xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
@@ -221,10 +220,6 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
                     #xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter)
                     stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
                 end
-
-		if any(isnan.(xcorr.corr))
-        	        println("Debug222: Nan found in .corr")
-	        end
 
                 nRem = length(findall(x->(x<threshold), ccList))
                 push!(rmList, nRem / nWins)
@@ -275,22 +270,9 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
             end
         end
 
-	if any(isnan.(xcorr_temp.corr))
-                println("Debug111: Nan found in .corr")
-        end
-
         close(f_cur)
 
         norm_factor = maximum(abs.(xcorr.corr[:, 1]))
-
-	if any(isnan.(xcorr.corr)) || isnan(norm_factor)
-		println("debug: there is NaN in xcorr.corr.")
-	end	
-
-	#=== Debug ===#
-	println(xcorr.corr[1:400:end, 1])
-	println(length(xcorr.corr[:,1]))
-	println(norm_factor)
 
         if IsNormalizedampperUnit && !iszero(norm_factor)
             xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
@@ -298,18 +280,9 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
             xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
         end
 
-	if any(isnan.(xcorr_temp.corr))
-        	println("Debug: Nan found in temoData")
-    	end
-    end
-
-    #=== Debug ===#
-    #println(rmList)
-
-
-    if tscount == 0
-        #no data for this station pair
-        #println("debug: nostationpair")
+    	if tscount == 0
+	        #no data for this station pair
+	        #println("debug: nostationpair")
         return nothing
     end
 
@@ -326,41 +299,28 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
         error("unitnumperstack should be larger than overlapperstack.")
     end
 
-    println(unitnumperstack)
-
     T = []
     icount=1
     while icount <= length(xcorr_temp.corr[1, :])-unitnumperstack+1
-	
+
         it = icount
         et = icount + unitnumperstack - 1
-
-	 print("it: ")
-        println(it)
 
         xcorrstack = zeros(N_maxlag)
 
         # stack over unitnumperstack
-	Nstack = 0
+		Nstack = 0
         for ind = it:et
-	   if any(isnan.(corrdebug))
-		println("debug: corrdebug has NaN")
-	   end
+			if !any(isnan.(xcorr_temp.corr[:, ind])) && !all(iszero.(xcorr_temp.corr[:, ind]))
+				xcorrstack .+= xcorr_temp.corr[:,ind]
+				Nstack += 1
 
-	   if !any(isnan.(xcorr_temp.corr[:, ind])) && !all(iszero.(xcorr_temp.corr[:, ind]))
-          	xcorrstack .+= xcorr_temp.corr[:,ind]
-		Nstack += 1
-  	 	#=== Debug ===#
-   		println(xcorrstack[1:400:end, end])
-           else
-		println("Nan or all zero found in corr. skip this unit time")
-	   end
+           	else
+			   	#println("Nan or all zero found in corr. skip this unit time")
+	   		end
         end
         #xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack)
         xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack ./ Nstack)
-
-	#=== Debug ===#
-	println(xcorr_all.corr[1:400:end, end])
 
         t1 = timestamplist[it]
         t2 = timestamplist[et]
