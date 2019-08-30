@@ -263,7 +263,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
             xcorr.corr = zeros(trunc(Int, N_maxlag),1)
 
             #if isempty(xcorr_temp.id)
-	    if xcorr_temp.fs == 0.0
+	    	if xcorr_temp.fs == 0.0
                 # store meta data to xcorr_temp
                 xcorr_temp = deepcopy(xcorr)
                 xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
@@ -283,7 +283,9 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
     	if tscount == 0
 	        #no data for this station pair
 	        #println("debug: nostationpair")
-        return nothing
+			return nothing
+		end
+		
     end
 
     #===
