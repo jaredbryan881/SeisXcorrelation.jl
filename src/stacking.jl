@@ -102,10 +102,9 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
     stackedData = stack(tempData, allstack=true, phase_smoothing=phase_smoothing)
 
     if any(isnan.(stackedData.corr))
-		println("Nan found in stack.jl temoData")
+		#println("Nan found in stack.jl temoData")
     end
     #println("... end")
-
     return stackedData, cList
 end
 
