@@ -72,9 +72,6 @@ function pstack(InputDict::Dict)
     stapairlist = collect(zip(stapair[1,:], stapair[2,:]))
     InputDict["stapairlist"] = stapairlist
 
-    #=== Debug ===#
-    stapairlist = collect(zip(["NC.PADB..SHZ"], ["NC.PTA..SHZ"]))
-
     # Parallelized by station pairs
     pmap(x -> map_stack(InputDict, x), stapairlist)
 
@@ -285,7 +282,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 	        #println("debug: nostationpair")
 			return nothing
 		end
-		
+
     end
 
     #===
