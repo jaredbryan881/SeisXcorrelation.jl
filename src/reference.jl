@@ -3,6 +3,7 @@ include("utils.jl")
 include("io.jl")
 include("stacking.jl")
 
+export compute_reference_xcorr
 """
     compute_reference_xcorr(tstamp::String, basefiname::String; phase_smoothing::Float64=0., stack::String="linear", reference::String="", thresh::Float64=-1.0)
 

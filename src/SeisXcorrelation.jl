@@ -1,25 +1,28 @@
 __precompile__()
-#module SeisXcorrelation
+module SeisXcorrelation
 
 using Distributed
-@everywhere using SeisIO, SeisNoise, Dates, FFTW, JLD2, Sockets, ORCA
+using SeisIO, SeisNoise, Dates, FFTW, JLD2, Sockets, ORCA
 # using SeisIO, SeisNoise, Dates, FFTW, JLD2, Distributed, Sockets, ORCA
 
 # read and write using jld2
-@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/io.jl")
+include("io.jl")
 # generate, sort, and classify station pairs
-@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/pairing.jl")
+include("pairing.jl")
 # miscellaneous utilities such as distance computation, windowing, and normalization
-@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/utils.jl")
+include("utils.jl")
 # splitting utilities for high-order cross-correlation coda extraction
-@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/partition.jl")
+include("partition.jl")
 # FFT wrapper for high-order cross-correlation
-@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/fft.jl")
+include("fft.jl")
 # cross-correlation wrapper for high-order cross-correlation
-@everywhere include("/n/home03/kokubo/.julia/dev/SeisXcorrelation/src/correlate.jl")
+include("correlate.jl")
+#compute reference
+include("reference.jl")
+# parallel stacking
+include("pstack.jl")
 
 export seisxcorrelation, seisxcorrelation_highorder
-
 
 """
     seisxcorrelation(tstamp::String, InputDict::Dict)
@@ -429,4 +432,4 @@ function seisxcorrelation_highorder(data::Dict, tstamp::String, corrstationlist:
     close(outFile)
 end
 
-#end # module
+end # module
