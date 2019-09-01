@@ -1,11 +1,46 @@
-using SeisIO, JLD2, SeisNoise, Statistics, PlotlyJS
 include("utils.jl")
 include("io.jl")
 include("stacking.jl")
 
 export compute_reference_xcorr
+
+function compute_reference_xcorr()
+    # computing reference xcorr
+    # input cross-correlations
+    corrname  = Outputdir*"/cc/$(Year)_xcorrs"
+    # output references
+    refname = corrname*"_ref.jld2" # this is fixed in the SeisXcorrelation/pstack.
+
+    # input file holds metadata (stationlist, timestamplist, etc.)
+    f = jldopen(corrname*".jld2")
+    tslist = f["info/timestamplist"]
+    close(f) # base xcorr file
+
+    # generate reference by stacking all cross-correlations
+    ref_dicts = pmap(t->compute_reference_xcorr(t, corrname, phase_smoothing=0., stack="linear"), tslist)
+
+    # collect all references into one dictionary
+    ref_dict_out = Dict()
+    for i=1:length(ref_dicts)
+        for stnpair in keys(ref_dicts[i])
+            if haskey(ref_dict_out, stnpair)
+                ref_dict_out[stnpair].corr .+= ref_dicts[i][stnpair].corr
+            else
+                ref_dict_out[stnpair] = copy(ref_dicts[i][stnpair])
+            end
+        end
+    end
+
+    f_out = jldopen(refname, "w")
+    for stnpair in keys(ref_dict_out)
+        f_out[stnpair] = ref_dict_out[stnpair]
+    end
+    close(f_out)
+
+end
+
 """
-    compute_reference_xcorr(tstamp::String, basefiname::String; phase_smoothing::Float64=0., stack::String="linear", reference::String="", thresh::Float64=-1.0)
+    map_reference(tstamp::String, basefiname::String; phase_smoothing::Float64=0., stack::String="linear", reference::String="", thresh::Float64=-1.0)
 
 Stack all cross-correlation functions for all given station pairs to generate a reference cross-correlation.
 
@@ -20,7 +55,7 @@ Stack all cross-correlation functions for all given station pairs to generate a 
 # Output
 - `foname.jld2`    : contains arrays of reference cross-correlations for each station pair
 """
-function compute_reference_xcorr(tstamp::String, basefiname::String; phase_smoothing::Float64=0., stack::String="linear", reference::String="", thresh::Float64=-1.0)
+function map_reference(tstamp::String, basefiname::String; phase_smoothing::Float64=0., stack::String="linear", reference::String="", thresh::Float64=-1.0)
     # hold reference xcorrs in memory and write all at once
     ref_dict = Dict()
 
