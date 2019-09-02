@@ -202,8 +202,7 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 			end
 
 	        if stackmode=="selective"
-	            xcorr, rmList = selective_stacking(xcorr, ref, threshold=InputDict["threshold"],
-								metric=InputDict["metric"], cohfilter = InputDict["cohfilter"])
+	            xcorr, rmList = selective_stacking(xcorr, ref, InputDict)
 	        elseif stackmode=="linear"
 				#linear stacking
 				# avoid NaN in xcorr

@@ -219,7 +219,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
             if stackmode == "selective"
 
-                xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, cohfilter=InputDict["cohfilter"])
+                xcorr, ccList = selective_stacking(xcorr, ref, InputDict)
 
                 nRem = length(findall(x->(x<threshold), ccList))
                 push!(rmList, nRem / nWins)

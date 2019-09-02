@@ -1,23 +1,30 @@
 export selective_stacking
 
 """
-    selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", win_len::Float64=10.0, win_step::Float64=5.0)
+    selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict)
 
 Stack the windows in a CorrData object that exceed a correlation-coefficient threshold with respect to a reference.
 
 # Arguments
 - `data::CorrData,`    : Input CorrData matrix used to define the reference and each window
 - `reference::CorrData`    : Reference cross-correlation function to use in computing the correlation coefficient
-- `threshold::Float64,`    : Value of correlation-coefficient below which we zero windows
-- `slice::Union{Bool, Float64, Array{Float64,1}}`    : whether to slice the cross-correlations before computing convergence. If so, a single Float64 specifies the
-                                                       lag at which to slice to keep just the ballistic wave and an array of Float64 specifies the start and end lag
-                                                       to keep only the coda.
+- `InputDict::Dict,`    : Dictionary for input parameters
+
 
 # Output
 - `stackedData::CorrData,`    : Slectively stacked data
 - `cList::Array{Float64,1}`    : Correlation coefficient of each window with respect to the reference
 """
-function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0, cohfilter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0.0)
+function selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict)
+
+	 threshold 			= InputDict["threshold"]
+	 slice 				= InputDict["timeslice"]
+	 metric 			= InputDict["metric"]
+	 coh_win_len 		= InputDict["coh_win_len"]
+	 coh_win_step 		= InputDict["coh_win_step"]
+	 cohfilter 			= InputDict["cohfilter"]
+	 phase_smoothing 	= InputDict["phase_smoothing"]
+
     # slice data if given a time window
     # TODO: find a better way to pass arguments to this function that only apply to coh, or only to cc. e.g., win_len has no meaning if metric=="cc"
     if typeof(slice) != Bool
