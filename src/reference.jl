@@ -1,5 +1,3 @@
-include("stacking.jl")
-
 export compute_reference_xcorr
 
 """

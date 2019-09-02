@@ -1,5 +1,5 @@
-include("./reference.jl")
-include("./stacking.jl")
+include("stacking.jl")
+include("reference.jl")
 
 export seisstack
 
