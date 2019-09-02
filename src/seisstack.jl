@@ -3,8 +3,6 @@ include("./stacking.jl")
 
 export seisstack
 
-using SeisIO, SeisNoise, JLD2, Dates, ORCA, PlotlyJS
-
 """
 seisstack(InputDict::Dict)
 
@@ -26,9 +24,13 @@ function seisstack(InputDict::Dict)
 	# if there is no reference, evaluate from InputDict["basefiname"]*".jld2"
 
 	Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
-	reference = Output_rootdir*"/reference_xcorr.jld2" # this is fixed in the SeisXcorrelation/reference.jl.
-    stapair = Array{String, 2}(undef, 2, 0)
+	Year = split(InputDict["basefiname"],"/")[end-2]
 
+	reference = Output_rootdir*"/reference_xcorr_for$(Year).jld2" # this is fixed in the SeisXcorrelation/pstack.
+
+	InputDict["referencepath"] = reference
+
+    stapair = Array{String, 2}(undef, 2, 0)
     try
         f_ref = jldopen(reference, "r")
         pairs = split.(keys(f_ref), ".")
@@ -98,7 +100,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
     metric     = InputDict["metric"]
     threshold  = InputDict["threshold"]
 
-    N_maxlag    = 2*fs*maxlag + 1
+    N_maxlag    = trunc(Int, 2*fs*maxlag + 1)
 
     if !haskey(InputDict, "filter")
         filter = false
@@ -106,8 +108,8 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
         filter = InputDict["filter"]
     end
 
-    reference = basefiname*"_ref.jld2"
-    if !ispath(reference)
+	reference = InputDict["referencepath"]
+	if !ispath(reference)
         reference = false
     end
 
@@ -138,9 +140,6 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
     # output file name
     foname     = InputDict["fodir"]*"/stack_$(stn1).$(stn2).jld2"
 
-    # init variables
-    xcorr_temp = CorrData()
-
     if stackmode == "clustered_selective"
         init_coef_series =  Array{Float64,1}()
         max_coef_series  =  Array{Float64,1}()
@@ -151,6 +150,16 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
     # time lags for xcorr
     lags = -maxlag:1/fs:maxlag
 
+	#save metadata
+
+	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, N_maxlag, stnpair, stnpairrev)
+
+	if typeof(xcorr_temp) != CorrData
+		# no data available with this stnpair
+		return nothing
+	end
+
+	# compute stack
     tscount = 0
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
 
@@ -200,11 +209,11 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
             end
 
             # if isempty(xcorr_temp.id) initiate xcorr_temp
-	    	if xcorr_temp.fs == 0.0
-                # store meta data to xcorr_temp
-                xcorr_temp = deepcopy(xcorr)
-                xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
-            end
+	    	# if xcorr_temp.fs == 0.0
+            #     # store meta data to xcorr_temp
+            #     xcorr_temp = deepcopy(xcorr)
+            #     xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
+            # end
 
             nWins = length(xcorr.corr[1,:])
 
@@ -217,6 +226,11 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
             elseif stackmode == "clustered_selective"
                 println("clustered_selective is under implementatin! do linear stacking")
+				# avoid NaN in xcorr
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
+
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
 
                 # if reference!=false
@@ -236,6 +250,11 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
                 # push!(max_coef_series, maxcoef)
 
             else
+				# avoid NaN in xcorr
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
+
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
 
@@ -253,11 +272,11 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
             xcorr.corr = zeros(trunc(Int, N_maxlag),1)
 
             #if isempty(xcorr_temp.id)
-	    	if xcorr_temp.fs == 0.0
-                # store meta data to xcorr_temp
-                xcorr_temp = deepcopy(xcorr)
-                xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
-            end
+	    	# if xcorr_temp.fs == 0.0
+            #     # store meta data to xcorr_temp
+            #     xcorr_temp = deepcopy(xcorr)
+            #     xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
+            # end
         end
 
         close(f_cur)
@@ -269,14 +288,17 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
         else
             xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
         end
-
-    	if tscount == 0
-	        #no data for this station pair
-	        #println("debug: nostationpair")
-			return nothing
-		end
-
     end
+
+	if tscount == 0
+		# if CIflag == 1
+		# 	println("return nothing because tscount = 0")
+		# end
+		#no data for this station pair
+		#println("debug: nostationpair")
+		return nothing
+	end
+
 
     #===
     Manipulate stacking by unitnumperstack
@@ -284,8 +306,6 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
     xcorr_all = deepcopy(xcorr_temp)
     xcorr_all.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
-
-    corrdebug = xcorr_temp.corr
 
     if unitnumperstack <= overlapperstack
         error("unitnumperstack should be larger than overlapperstack.")
@@ -365,4 +385,44 @@ function get_midtime(t1::String, t2::String)
     m2, d2 = j2md(y2,jd2)
     time_end=DateTime(y2, m2, d2)
     return (datetime2unix(time_init) + datetime2unix(time_end))/2
+end
+
+
+"""
+get_metadata(timestamplist::Array, timeslice::Array, basename::String, N_maxlag::Int)
+get metadata from available cc jld2.
+"""
+
+function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String, N_maxlag::Int,
+	 	stnpair::String, stnpairrev::String)
+
+	xcorr_temp = CorrData()
+
+	breakflag=false
+	for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
+		f_cur = jldopen(basefiname*".$time.jld2")
+		stnkeys = keys(f_cur[time])
+
+		if stnpair ∈ stnkeys || stnpairrev ∈ stnkeys
+			# declare
+			xcorr = CorrData()
+			if stnpair ∈ stnkeys
+				xcorr = f_cur["$time/$stnpair"]
+			else
+				xcorr = f_cur["$time/$stnpairrev"]
+			end
+			# store meta data to xcorr_temp
+			xcorr_temp = deepcopy(xcorr)
+			xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
+			breakflag=true
+			break;
+		end
+	end
+
+	if breakflag == true
+		return xcorr_temp
+	else
+		# no data available with this stnpair
+		return 1
+	end
 end

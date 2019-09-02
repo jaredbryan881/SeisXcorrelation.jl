@@ -1,7 +1,7 @@
 __precompile__()
 module SeisXcorrelation
 
-using SeisIO, SeisNoise, Dates, Statistics, Geodesy, FFTW, JLD2, Sockets, ORCA, PlotlyJS, Plots, Distributed
+using SeisIO, SeisNoise, Dates, Statistics, Geodesy, FFTW, DSP, JLD2, Sockets, ORCA, PlotlyJS, Distributed
 using Geodesics
 
 # compute cross-correlation

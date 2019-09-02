@@ -1,5 +1,3 @@
-#include("utils.jl")
-#include("io.jl")
 include("stacking.jl")
 
 export compute_reference_xcorr
@@ -21,11 +19,10 @@ function compute_reference_xcorr(InputDict::Dict)
     ===#
 
     Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
-
-	refname = Output_rootdir*"/reference_xcorr.jld2" # this is fixed in the SeisXcorrelation/pstack.
+	Year = split(InputDict["basefiname"],"/")[end-2]
+	refname = Output_rootdir*"/reference_xcorr_for$(Year).jld2" # this is fixed in the SeisXcorrelation/pstack.
 
 	ref_dict_out = Dict()
-	Numofrefstack = 0
 
 	# get xcorr path between ref_starttime and ref_endtime
 	ref_st = InputDict["ref_starttime"]
@@ -37,55 +34,71 @@ function compute_reference_xcorr(InputDict::Dict)
 
 	for riter = 1:InputDict["ref_iter"] # iterate over "ref_iter" when using selective ref
 		for year = ref_styear:ref_etyear
+			println(riter)
+
 			corrname  = Output_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
 			f = jldopen(corrname*".jld2");
 			tslist = f["info/timestamplist"] # base xcorr file
 			close(f)
 
+			ref_dicts = []
+
 			if riter == 1
 				# first iteration should be stack="linear" because no reference
-				ref_dicts = pmap(t->map_reference(t, InputDict, corr_name, stack="linear"), tslist)
+				ref_dicts = pmap(t->map_reference(t, InputDict, corrname, stackmode="linear"), tslist)
 				# collect all references into one dictionary at first iteration
 				ref_dict_out_init = Dict()
 
 				for i=1:length(ref_dicts)
 					for stnpair in keys(ref_dicts[i])
-
-						if haskey(ref_dict_out, stnpair)
-							Numofrefstack += 1
+						if haskey(ref_dict_out_init, stnpair)
 							ref_dict_out_init[stnpair].corr .+= ref_dicts[i][stnpair].corr
 						else
 							# add new station pair into ref_dict_out
-							ref_dict_out_init[stnpair] = copy(ref_dicts[i][stnpair])
+							ref_dict_out_init[stnpair] = deepcopy(ref_dicts[i][stnpair])
 						end
 					end
 				end
 
 				# save initial reference
 				f_out = jldopen(refname, "w")
-				for stnpair in keys(ref_dict_out)
+				for stnpair in keys(ref_dict_out_init)
 					f_out[stnpair] = ref_dict_out_init[stnpair]
 				end
 				close(f_out)
 
 			else
 				#allow either linear stack or selective stack
-				ref_dicts = pmap(t->map_reference(t, InputDict, corr_name,
-							stack=InputDict["stackmode"], reference=refname), tslist)
+				ref_dicts = pmap(t->map_reference(t, InputDict, corrname,
+							stackmode=InputDict["stackmode"], reference=refname), tslist)
 			end
 
+			#println(sizeof(ref_dicts))
+
 			# merge all timestamp
+			#println("debug1")
+			#println(length(ref_dicts))
 
 			for i=1:length(ref_dicts)
+				#println(keys(ref_dicts[i]))
+
 				for stnpair in keys(ref_dicts[i])
+
+					rr1 = ref_dicts[i][stnpair]
+					#print("debug_out: ")
+					#println(rr1.corr[100:110,1])
+
 					if haskey(ref_dict_out, stnpair)
 						ref_dict_out[stnpair].corr .+= ref_dicts[i][stnpair].corr
-						ref_dict_out[stnpair].misc["numofstack"] += 1
-
+						if riter == 1
+							ref_dict_out[stnpair].misc["numofstack"] += 1
+						end
 					else
 						# initiate new station pair CorrData into ref_dict_out
-						ref_dict_out[stnpair] = copy(ref_dicts[i][stnpair])
-						ref_dict_out[stnpair].misc["numofstack"] = 1
+						ref_dict_out[stnpair] = deepcopy(ref_dicts[i][stnpair])
+						if riter == 1
+							ref_dict_out[stnpair].misc["numofstack"] = 1
+						end
 					end
 				end
 			end
@@ -96,6 +109,13 @@ function compute_reference_xcorr(InputDict::Dict)
 	# save final reference (this works even if riter = 1)
 	f_out = jldopen(refname, "w")
 	for stnpair in keys(ref_dict_out)
+
+		if InputDict["IsNormalizedReference"]
+			#normalized reference amplitude by numofstack
+			ref_dict_out[stnpair].corr ./= ref_dict_out[stnpair].misc["numofstack"]
+		end
+		#rr = ref_dict_out[stnpair]
+		#println(rr.corr[100:110,1])
 		f_out[stnpair] = ref_dict_out[stnpair]
 	end
 	close(f_out)
@@ -114,9 +134,7 @@ function compute_reference_xcorr(InputDict::Dict)
 	println("Maximum num of stack: $(maxnumofstack)")
 	println("Minimum num of stack: $(minnumofstack)")
 	println("Mean num of stack   : $(meannumofstack)")
-	println("#---reference xcorr is successfully saved---#\n
-			$(refname)\n
-			#--------------------------------------------#.")
+	println("#---reference xcorr is successfully saved---#\n$(refname)\n#--------------------------------------------#.")
 end
 
 """
@@ -153,16 +171,6 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 	    grp = f_cur[tstamp] # xcorrs
 	    println("$tstamp")
 
-		# load reference
-		if !isempty(reference)
-			f_exref = jldopen(reference)
-			ref = f_exref[pair]
-			close(f_exref)
-			if InputDict["filter"] !=false
-				ref   = bandpass(ref.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
-			end
-		end
-
 	    # iterate over station pairs
 	    for pair in sort(keys(grp))
 	        # TODO: use only unique station pairings when creating references. Currently no guarantee of uniqueness (reverse can exist)
@@ -176,12 +184,34 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 				xcorr = bandpass(xcorr.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
 			end
 
+			# load reference
+			if !isempty(reference)
+				f_exref = jldopen(reference)
+
+				ref = try
+						f_exref[pair]
+					catch
+						#println("debug: add new from second with linear.")
+						stackmode="linear"
+					end
+
+				close(f_exref)
+				if InputDict["filter"] !=false
+					ref   = bandpass(ref.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
+				end
+			end
+
 	        if stackmode=="selective"
 	            xcorr, rmList = selective_stacking(xcorr, ref, threshold=InputDict["threshold"],
-								metric=InputDict["metric"], cohfilter = Inputdict["cohfilter"])
+								metric=InputDict["metric"], cohfilter = InputDict["cohfilter"])
 	        elseif stackmode=="linear"
 				#linear stacking
-	            stack!(xcorr, allstack=true, phase_smoothing=InputDict["phase_smoothing"])
+				# avoid NaN in xcorr
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
+
+	            stack!(xcorr, allstack=true, phase_smoothing=float(InputDict["phase_smoothing"]))
 			else
 				error("stack mode $(stackmode) not defined.")
 	        end
@@ -190,7 +220,7 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 	        if haskey(ref_dict, pair)
 	            ref_dict[pair].corr .+= xcorr.corr
 	        else
-	            ref_dict[pair] = copy(xcorr)
+	            ref_dict[pair] = deepcopy(xcorr)
 	        end
 	    end
 

@@ -1,7 +1,4 @@
-using SeisIO, SeisNoise, JLD2, Statistics, FFTW, DSP, Plots
-
-#include("utils.jl")
-#include("partition.jl")
+export selective_stacking
 
 """
     selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", win_len::Float64=10.0, win_step::Float64=5.0)
@@ -24,8 +21,8 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
     # slice data if given a time window
     # TODO: find a better way to pass arguments to this function that only apply to coh, or only to cc. e.g., win_len has no meaning if metric=="cc"
     if typeof(slice) != Bool
-        ref = copy(reference)
-        d = copy(data)
+        ref = deepcopy(reference)
+        d = deepcopy(data)
         if typeof(slice)==Float64
             # time vector
             tvec = -reference.maxlag:1/reference.fs:reference.maxlag
@@ -51,8 +48,8 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
         end
     else
         # default to full reference cross-correlation
-        ref = reference
-        d = data
+		ref = deepcopy(reference)
+		d = deepcopy(data)
     end
 
     if metric=="cc"
@@ -94,7 +91,7 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
     end
 
     # copy data to extract well-fitting windows
-    tempData = copy(data)
+    tempData = deepcopy(data)
     tempData.corr = tempData.corr[:, good_fit]
 
     #print("debug1")
@@ -126,7 +123,14 @@ function get_cc(data::CorrData, reference::CorrData)
 
     # iterate over each windowed cross-correlation and compute correlation-coefficient
     for j=1:size(data.corr)[2]
-        cList[j] = cor(reference.corr[:,1], data.corr[:,j])
+		try
+        	cList[j] = cor(reference.corr[:,1], data.corr[:,j])
+		catch y
+			println(y)
+			println(data)
+			println(reference)
+			cList[j] = -1.0
+		end
     end
 
     return cList
