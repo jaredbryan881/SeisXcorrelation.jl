@@ -13,7 +13,7 @@ See example to make InputDict.
 """
 function seisxcorrelation(InputDict::Dict)
     # read data from JLD2
-    data = jldopen(InputDict_xcorr["finame"])
+    data = jldopen(InputDict["finame"])
     # read station and time stamp lists
     stlist = data["info/stationlist"]
     tstamplist = data["info/DLtimestamplist"]
@@ -24,13 +24,13 @@ function seisxcorrelation(InputDict::Dict)
     sorted_pairs = sort_pairs(station_pairs) # dict
 
     # create base output file with network, station, and pairing info
-    jldopen("$(InputDict_xcorr["basefoname"]).jld2", "w") do file
+    jldopen("$(InputDict["basefoname"]).jld2", "w") do file
         file["info/timestamplist"]   = tstamplist;
         file["info/stationlist"]     = stlist;
         file["info/corrstationlist"] = sorted_pairs;
     end
 
-    pmap(x->map_xcorr(x, InputDict_xcorr), tstamplist)
+    pmap(x->map_xcorr(x, InputDict), tstamplist)
 
     println("seisxcorrelation has been successfully done.")
 
@@ -73,6 +73,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     maxtimelag = InputDict["maxtimelag"]
     # stacking parameters
     stack      = InputDict["allstack"]
+    max_std    = InputDict["max_std"]
 
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
@@ -86,7 +87,21 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     # assume form "$tstamp/$station"
     #dsk = collect(keys(data))
     #stlist = sort([string(split.(dsk[i], "/")[2]) for i=1:length(dsk)])
-    stlist = collect(keys(inFile["$tstamp"]))
+    try
+        stlist = collect(keys(inFile["$tstamp"]))
+    catch
+        # this time stamp has no data
+        # create empty output file for this time stamp, fill relevant info
+        println("$tstamp has no data. skip this day with empty cc file $basefoname.$tstamp.jld2.")
+        outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
+        outFile["info/stationlist"] = String[]
+        outFile["info/timeunit"] = time_unit
+        close(inFile)
+        close(outFile)
+        return nothing
+    end
+
+
 
     # create output file for each time stamp, fill relevant info
     outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
@@ -138,9 +153,11 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
                 # make sure the data is the proper length to avoid dimension mismatch
                 npts1 = Int(time_unit * S1[1].fs)
+
                 if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
 
-                tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+                tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
+                                                to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
                 #println("fft1: $tt1temp ")
                 FFTDict[stn1] = FFT1
                 FFT1
@@ -201,9 +218,12 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
                         # make sure the data is the proper length to avoid dimension mismatch
                         npts2 = Int(time_unit * S2[1].fs)
+
                         if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[end,1]=npts2 end
 
-                        tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+                        tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
+                                        to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
+
                         #print("fft2: $tt2temp ")
                         FFTDict[stn2] = FFT2
                         FFT2
@@ -227,6 +247,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
             if maxdistance==false || dist(FFT1.loc, FFT2.loc) <= maxdistance
 
                 # compute correlation using SeisNoise.jl -- returns type CorrData
+                #println(FFT1)
+                #println(FFT2)
+
                 tt3temp = @elapsed xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
                 #print("xcorr: $tt3temp ")
                 varname = "$tstamp/$stn1.$stn2"
@@ -439,4 +462,15 @@ function map_xcorr_highorder(data::Dict, tstamp::String, corrstationlist::Array{
     close(outFile)
 end
 
-end # module
+"""
+    dist(loc1::GeoLoc, loc2::GeoLoc)
+
+Compute the distance (m) between two points (lat, lon, elev)
+This assumes the distance is not large, such that the curvature of the earth is negligible.
+"""
+function dist(loc1::GeoLoc, loc2::GeoLoc)
+    loc1_lla = LLA(loc1.lat, loc1.lon, loc1.el)
+    loc2_lla = LLA(loc2.lat, loc2.lon, loc2.el)
+
+    return distance(loc1_lla, loc2_lla)
+end

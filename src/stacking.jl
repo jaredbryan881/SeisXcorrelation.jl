@@ -1,7 +1,7 @@
 using SeisIO, SeisNoise, JLD2, Statistics, FFTW, DSP, Plots
 
-include("utils.jl")
-include("partition.jl")
+#include("utils.jl")
+#include("partition.jl")
 
 """
     selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", win_len::Float64=10.0, win_step::Float64=5.0)
@@ -20,7 +20,7 @@ Stack the windows in a CorrData object that exceed a correlation-coefficient thr
 - `stackedData::CorrData,`    : Slectively stacked data
 - `cList::Array{Float64,1}`    : Correlation coefficient of each window with respect to the reference
 """
-function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0, filter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0.0)
+function selective_stacking(data::CorrData, reference::CorrData; threshold::Float64=0.0, slice::Union{Bool, Float64, Array{Float64,1}}=false, metric::String="cc", coh_win_len::Float64=10.0, coh_win_step::Float64=5.0, cohfilter::Union{Bool, Array{Float64,1}}=false, phase_smoothing::Float64=0.0)
     # slice data if given a time window
     # TODO: find a better way to pass arguments to this function that only apply to coh, or only to cc. e.g., win_len has no meaning if metric=="cc"
     if typeof(slice) != Bool
@@ -64,12 +64,12 @@ function selective_stacking(data::CorrData, reference::CorrData; threshold::Floa
 
         # use only coherencies for requested frequencies in the mean
         # default to using all frequencies
-        if filter==false
-            filter=[0.0, ref.fs/2]
+        if cohfilter==false
+            cohfilter=[0.0, ref.fs/2]
         end
         # set acceptable frequencies to use in mean coh calculation
         freqs = rfftfreq(Int(coh_win_len*ref.fs), ref.fs)
-        freq_inds = findall(x->(x>=filter[1] && x<=filter[2]), freqs)
+        freq_inds = findall(x->(x>=cohfilter[1] && x<=cohfilter[2]), freqs)
 
         # compute correlation coefficient for each window in data with respect to reference
         ccList=get_cc(d, ref)

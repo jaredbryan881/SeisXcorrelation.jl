@@ -1,35 +1,32 @@
+include("./reference.jl")
 include("./stacking.jl")
 
-export pstack
+export seisstack
 
 using SeisIO, SeisNoise, JLD2, Dates, ORCA, PlotlyJS
 
 """
-get_midtime(t1::String, t2::String)
-return average unix time between t1(ex. "2001.147.T00:00:00") and t2.
-"""
-function get_midtime(t1::String, t2::String)
-    y1, jd1 = parse.(Int64, split(t1, ".")[1:2])
-    m1, d1 = j2md(y1,jd1)
-    time_init=DateTime(y1, m1, d1)
-
-    y2, jd2 = parse.(Int64, split(t2, ".")[1:2])
-    m2, d2 = j2md(y2,jd2)
-    time_end=DateTime(y2, m2, d2)
-    return (datetime2unix(time_init) + datetime2unix(time_end))/2
-end
-
-
-"""
-pstack(InputDict::Dict)
+seisstack(InputDict::Dict)
 
 compute stacking and save to jld2.
 """
-function pstack(InputDict::Dict)
+function seisstack(InputDict::Dict)
+
+	#===
+	compute reference
+	===#
+	compute_reference_xcorr(InputDict)
+
+	#===
+	compute stacking
+	===#
 
     # load station pairs
-    # If reference exists, suppose all station pairs are keys(ref)
-    reference = InputDict["basefiname"]*"_ref.jld2"
+    # compute stack in all station pairs by keys(ref)
+	# if there is no reference, evaluate from InputDict["basefiname"]*".jld2"
+
+	Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+	reference = Output_rootdir*"/reference_xcorr.jld2" # this is fixed in the SeisXcorrelation/reference.jl.
     stapair = Array{String, 2}(undef, 2, 0)
 
     try
@@ -41,7 +38,8 @@ function pstack(InputDict::Dict)
         close(f_ref)
 
     catch
-        println("reference not found. use all potential station from basefile.")
+        println("reference not found (if stackmode=linear, please ignore this warning.).\n
+		 		use all potential station from basefile.")
         reference = false
 
         inFile = jldopen(InputDict["basefiname"]*".jld2", "r")
@@ -89,6 +87,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
     basefiname = InputDict["basefiname"]
     stackmode  = InputDict["stackmode"] #"clustered_selective", "selective" or "linear"
+	phase_smoothing = InputDict["phase_smoothing"]
     unitnumperstack = trunc(Int, InputDict["unitnumperstack"]) #num of stacking timestamp per unit stack (ex. 1 day = 1unit or 1month = 30unit)
     overlapperstack = trunc(Int, InputDict["overlapperstack"]) #num of overlapperstack per unit stack (ex. 1 day = 1unit or 1month = 30unit)
     savefig    = InputDict["savefig"]
@@ -200,7 +199,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
                 end
             end
 
-            #if isempty(xcorr_temp.id)
+            # if isempty(xcorr_temp.id) initiate xcorr_temp
 	    	if xcorr_temp.fs == 0.0
                 # store meta data to xcorr_temp
                 xcorr_temp = deepcopy(xcorr)
@@ -211,12 +210,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
             if stackmode == "selective"
 
-                if reference!=false
-                    xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter)
-                else
-                    #xcorr, ccList = selective_stacking(xcorr, threshold=threshold, metric=metric, filter=filter)
-                    stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
-                end
+                xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, cohfilter=InputDict["cohfilter"])
 
                 nRem = length(findall(x->(x<threshold), ccList))
                 push!(rmList, nRem / nWins)
@@ -242,7 +236,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
                 # push!(max_coef_series, maxcoef)
 
             else
-                stack!(xcorr, allstack=true, phase_smoothing=0.0)
+                stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
 
             if stnpairrev ∈ stnkeys
@@ -253,7 +247,6 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
         else
             # this station pair does not exist in this time stamp
-
             xcorr = CorrData()
             xcorr.fs = fs
             xcorr.maxlag = trunc(Int, N_maxlag)
@@ -271,7 +264,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
         norm_factor = maximum(abs.(xcorr.corr[:, 1]))
 
-        if IsNormalizedampperUnit && !iszero(norm_factor)
+        if IsNormalizedampperUnit && !iszero(norm_factor) #to avoid deviding by zero
             xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
         else
             xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
@@ -357,4 +350,19 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
         figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
         savefig(p, figname)
     end
+end
+
+"""
+get_midtime(t1::String, t2::String)
+return average unix time between t1(ex. "2001.147.T00:00:00") and t2.
+"""
+function get_midtime(t1::String, t2::String)
+    y1, jd1 = parse.(Int64, split(t1, ".")[1:2])
+    m1, d1 = j2md(y1,jd1)
+    time_init=DateTime(y1, m1, d1)
+
+    y2, jd2 = parse.(Int64, split(t2, ".")[1:2])
+    m2, d2 = j2md(y2,jd2)
+    time_end=DateTime(y2, m2, d2)
+    return (datetime2unix(time_init) + datetime2unix(time_end))/2
 end
