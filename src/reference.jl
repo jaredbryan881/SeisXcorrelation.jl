@@ -17,16 +17,16 @@ function compute_reference_xcorr(InputDict::Dict)
     ===#
 
     Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
-	Year = split(InputDict["basefiname"],"/")[end-2]
-	refname = Output_rootdir*"/reference_xcorr_for$(Year).jld2" # this is fixed in the SeisXcorrelation/pstack.
+	refYear = split(InputDict["basefiname"],"/")[end-2]
+	refname = Output_rootdir*"/reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
 
 	ref_dict_out = Dict()
 
 	# get xcorr path between ref_starttime and ref_endtime
-	ref_st = InputDict["ref_starttime"]
-	ref_et = InputDict["ref_endtime"]
-	ref_styear = Year(ref_st).value
-	ref_etyear = Year(ref_et).value
+	ref_st =InputDict["ref_starttime"]
+	ref_et =InputDict["ref_endtime"]
+	ref_styear = Dates.Year(ref_st).value
+	ref_etyear = Dates.Year(ref_et).value
 
 	if InputDict["ref_iter"] < 1 error("ref_iter should be more than 1."); end
 

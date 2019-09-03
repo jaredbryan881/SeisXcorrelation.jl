@@ -87,8 +87,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     # assume form "$tstamp/$station"
     #dsk = collect(keys(data))
     #stlist = sort([string(split.(dsk[i], "/")[2]) for i=1:length(dsk)])
+    stlist =
     try
-        stlist = collect(keys(inFile["$tstamp"]))
+        collect(keys(inFile["$tstamp"]))
     catch
         # this time stamp has no data
         # create empty output file for this time stamp, fill relevant info
