@@ -103,7 +103,7 @@ function selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict
 
     #print("debug1")
     # linearly stack all data that exceeds the correlation-coefficient threshold
-    stackedData = stack(tempData, allstack=true, phase_smoothing=phase_smoothing)
+    stackedData = stack(tempData, allstack=true, phase_smoothing=float(phase_smoothing))
 
     if any(isnan.(stackedData.corr))
 		#println("Nan found in stack.jl temoData")
