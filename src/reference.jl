@@ -200,6 +200,12 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 			end
 
 	        if stackmode=="selective"
+
+				# avoid NaN in xcorr
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
+
 	            xcorr, rmList = selective_stacking(xcorr, ref, InputDict)
 	        elseif stackmode=="linear"
 				#linear stacking

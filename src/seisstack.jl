@@ -219,6 +219,10 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
             if stackmode == "selective"
 
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
+
                 xcorr, ccList = selective_stacking(xcorr, ref, InputDict)
 
                 nRem = length(findall(x->(x<threshold), ccList))
