@@ -44,6 +44,8 @@ function compute_reference_xcorr(InputDict::Dict)
 			if riter == 1
 				# first iteration should be stack="linear" because no reference
 				ref_dicts = pmap(t->map_reference(t, InputDict, corrname, stackmode="linear"), tslist)
+				#NOTE: ref_dicts has fillstation pass key including channels
+
 				# collect all references into one dictionary at first iteration
 				ref_dict_out_init = Dict()
 
@@ -160,8 +162,8 @@ function compute_reference_xcorr(InputDict::Dict)
 	# save final reference (this works even if riter = 1)
 	f_out = jldopen(refname, "w")
 	for stnpair in keys(ref_dict_out)
-		#Debug
-		println(stnpair)
+		# #Debug
+		# println(stnpair)
 		if InputDict["IsNormalizedReference"]
 			#normalized reference amplitude by numofstack
 			ref_dict_out[stnpair].corr ./= ref_dict_out[stnpair].misc["numofstack"]

@@ -134,6 +134,9 @@ function map_stack(InputDict::Dict, station::Tuple)
     stnpair = stn1*"-"*stn2*"-"*comp
     stnpairrev = stn2*"-"*stn1*"-"*comp
 
+	# println(stnpair)
+	# println(stnpairrev)
+
     #show progress
     progid = findfirst(x -> x==station, InputDict["stapairlist"])
     if mod(progid, 500) == 0
@@ -156,6 +159,9 @@ function map_stack(InputDict::Dict, station::Tuple)
 	#save metadata
 
 	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, N_maxlag, stnpair, stnpairrev)
+
+	# print("xcorr: ")
+	# println(xcorr_temp)
 
 	if typeof(xcorr_temp) != CorrData
 		# no data available with this stnpair
@@ -183,16 +189,19 @@ function map_stack(InputDict::Dict, station::Tuple)
 		#if stnpair ∈ stnkeys || stnpairrev ∈ stnkeys
 
 		#debug
-		if titer == 10
-			print("debug1: ")
-			println(cur_stn1*"-"*cur_stn2*"-"*cur_comp)
-		end
+		# if titer == 1
+		# 	print("debug1: ")
+		# 	println(nochan_stnkeys)
+		# end
+
+		# println(stnpair ∈ nochan_stnkeys)
+		# println(stnpairrev ∈ nochan_stnkeys)
 
 		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 
-			if titer > 20 && titer < 25
-				print("debug2: found stnpair ")
-			end
+			# if titer > 1 && titer < 5
+			# 	print("debug2: found stnpair ")
+			# end
 
             # declare
             xcorr = CorrData()
@@ -378,7 +387,12 @@ function map_stack(InputDict::Dict, station::Tuple)
 	   		end
         end
         #xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack)
-        xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack ./ Nstack)
+		if Nstack == 0
+			# This day ther is no stacked cc. fill NAN
+			xcorr_all.corr = hcat(xcorr_all.corr, zeros(N_maxlag, 1) .* NaN)
+        else
+			xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack ./ Nstack)
+		end
 
         t1 = timestamplist[it]
         t2 = timestamplist[et]
@@ -455,11 +469,16 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 		for k = 1:length(full_stnkeys)
 			cur_stn1 = join(split(full_stnkeys[k], ".")[1:2], ".")
 			cur_stn2 = join(split(full_stnkeys[k], ".")[5:6], ".")
-			cur_comp1 =split(full_stnkeys[k], ".")[4]
-			cur_comp2 =split(full_stnkeys[k], ".")[8]
+			cur_comp1 =split(full_stnkeys[k], ".")[4][end]
+			cur_comp2 =split(full_stnkeys[k], ".")[8][end]
 			cur_comp=cur_comp1*cur_comp2
 			push!(nochan_stnkeys, cur_stn1*"-"*cur_stn2*"-"*cur_comp)
 		end
+
+		# println(stnpair)
+		# println(stnpairrev)
+		# println(nochan_stnkeys)
+		#
 
 		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 
