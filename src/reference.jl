@@ -47,16 +47,46 @@ function compute_reference_xcorr(InputDict::Dict)
 				# collect all references into one dictionary at first iteration
 				ref_dict_out_init = Dict()
 
+				# Consider station pairs through the time regardless of channel
+				# e.g. 1st day:NC.PDA..EHZ.NC.PCA..EHZ.  2nd day: NC.PCA..SHZ.NC.PDA..EHZ.
+				# this case above we regard it as same station pair so that stacking togeter with "NC.PDA-NC.PCA-ZZ".
+
 				for i=1:length(ref_dicts)
-					for stnpair in keys(ref_dicts[i])
-						if haskey(ref_dict_out_init, stnpair)
-							ref_dict_out_init[stnpair].corr .+= ref_dicts[i][stnpair].corr
+					for stnkey in keys(ref_dicts[i])
+						xcorr_temp = ref_dicts[i][stnkey]
+						stnkey = xcorr_temp.name
+						stn1 = join(split(stnkey, ".")[1:2], ".")
+						stn2 = join(split(stnkey, ".")[5:6], ".")
+						comp = xcorr_temp.comp
+						nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+						nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+
+						if haskey(ref_dict_out_init, nochan_stnpair)
+							if !isempty(ref_dicts[i][stnkey].corr)
+			 					ref_dict_out_init[nochan_stnpair].corr .+= ref_dicts[i][stnkey].corr
+							end
+				 		elseif haskey(ref_dict_out_init, nochan_stnpairrev)
+							if !isempty(ref_dicts[i][stnkey].corr)
+								ref_dict_out_init[nochan_stnpair].corr .+= reverse(ref_dicts[i][stnkey].corr, dims=1)
+							end
 						else
-							# add new station pair into ref_dict_out
-							ref_dict_out_init[stnpair] = deepcopy(ref_dicts[i][stnpair])
+							# add new station pair into ref_dict_out with stnpair (reversed stnpair in other time steps is taken into account above.)
+							ref_dict_out_init[nochan_stnpair] = deepcopy(ref_dicts[i][stnkey])
 						end
 					end
 				end
+
+				#
+				# for i=1:length(ref_dicts)
+				# 	for stnpair in keys(ref_dicts[i])
+				# 		if haskey(ref_dict_out_init, stnpair)
+				# 			ref_dict_out_init[stnpair].corr .+= ref_dicts[i][stnpair].corr
+				# 		else
+				# 			# add new station pair into ref_dict_out
+				# 			ref_dict_out_init[stnpair] = deepcopy(ref_dicts[i][stnpair])
+				# 		end
+				# 	end
+				# end
 
 				# save initial reference
 				f_out = jldopen(refname, "w")
@@ -79,25 +109,48 @@ function compute_reference_xcorr(InputDict::Dict)
 
 			for i=1:length(ref_dicts)
 				#println(keys(ref_dicts[i]))
-
-				for stnpair in keys(ref_dicts[i])
-
-					rr1 = ref_dicts[i][stnpair]
-					#print("debug_out: ")
-					#println(rr1.corr[100:110,1])
-
-					if haskey(ref_dict_out, stnpair)
-						ref_dict_out[stnpair].corr .+= ref_dicts[i][stnpair].corr
-						if riter == 1
-							ref_dict_out[stnpair].misc["numofstack"] += 1
+				for stnkey in keys(ref_dicts[i])
+					xcorr_temp = ref_dicts[i][stnkey]
+					stnkey = xcorr_temp.name
+					stn1 = join(split(stnkey, ".")[1:2], ".")
+					stn2 = join(split(stnkey, ".")[5:6], ".")
+					comp = xcorr_temp.comp
+					nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+					nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+					if haskey(ref_dict_out, nochan_stnpair)
+						if !isempty(ref_dicts[i][stnkey].corr)
+							ref_dict_out[nochan_stnpair].corr .+= ref_dicts[i][stnkey].corr
+							if riter == 1
+								ref_dict_out[nochan_stnpair].misc["numofstack"] += 1
+							end
+						end
+					elseif haskey(ref_dict_out, nochan_stnpairrev)
+						if !isempty(ref_dicts[i][stnkey].corr)
+							ref_dict_out[nochan_stnpair].corr .+= reverse(ref_dicts[i][stnkey].corr, dims=1)
+							if riter == 1
+								ref_dict_out[nochan_stnpair].misc["numofstack"] += 1
+							end
 						end
 					else
-						# initiate new station pair CorrData into ref_dict_out
-						ref_dict_out[stnpair] = deepcopy(ref_dicts[i][stnpair])
+						# add new station pair into ref_dict_out with stnpair (reversed stnpair in other time steps is taken into account above.)
+						ref_dict_out[nochan_stnpair] = deepcopy(ref_dicts[i][stnkey])
 						if riter == 1
-							ref_dict_out[stnpair].misc["numofstack"] = 1
+							ref_dict_out[nochan_stnpair].misc["numofstack"] = 1
 						end
 					end
+
+					# if haskey(ref_dict_out, stnpair)
+					# 	ref_dict_out[stnpair].corr .+= ref_dicts[i][stnpair].corr
+					# 	if riter == 1
+					# 		ref_dict_out[stnpair].misc["numofstack"] += 1
+					# 	end
+					# else
+					# 	# initiate new station pair CorrData into ref_dict_out
+					# 	ref_dict_out[stnpair] = deepcopy(ref_dicts[i][stnpair])
+					# 	if riter == 1
+					# 		ref_dict_out[stnpair].misc["numofstack"] = 1
+					# 	end
+					# end
 				end
 			end
 
@@ -107,7 +160,8 @@ function compute_reference_xcorr(InputDict::Dict)
 	# save final reference (this works even if riter = 1)
 	f_out = jldopen(refname, "w")
 	for stnpair in keys(ref_dict_out)
-
+		#Debug
+		println(stnpair)
 		if InputDict["IsNormalizedReference"]
 			#normalized reference amplitude by numofstack
 			ref_dict_out[stnpair].corr ./= ref_dict_out[stnpair].misc["numofstack"]
@@ -171,7 +225,7 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 
 	    # iterate over station pairs
 	    for pair in sort(keys(grp))
-	        # TODO: use only unique station pairings when creating references. Currently no guarantee of uniqueness (reverse can exist)
+	        # Implemented -> TODO: use only unique station pairings when creating references. Currently no guarantee of uniqueness (reverse can exist)
 	        # load xcorr
 	        xcorr = try grp[pair] catch; continue end
 
@@ -184,14 +238,27 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 
 			# load reference
 			if !isempty(reference)
+
+				stnkey = xcorr.name
+				stn1 = join(split(stnkey, ".")[1:2], ".")
+				stn2 = join(split(stnkey, ".")[5:6], ".")
+				comp = xcorr.comp
+				nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+
 				f_exref = jldopen(reference)
 
+				# NOTE: the try catch below keeps consitent to the order of station pairs between current and reference
 				ref = try
-						f_exref[pair]
-					catch
-						#println("debug: add new from second with linear.")
-						stackmode="linear"
-					end
+						f_exref[nochan_stnpair]
+					  catch
+							try
+								f_exref[nochan_stnpairrev]
+							catch
+								#println("debug: add new from second with linear.")
+								stackmode="linear"
+							end
+					  end
 
 				close(f_exref)
 				if InputDict["filter"] !=false

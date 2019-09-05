@@ -30,18 +30,20 @@ function seisstack(InputDict::Dict)
 
 	InputDict["referencepath"] = reference
 
-    stapair = Array{String, 2}(undef, 2, 0)
+    stapair = Array{String, 2}(undef, 3, 0)
     try
         f_ref = jldopen(reference, "r")
-        pairs = split.(keys(f_ref), ".")
-        pair1 = [join(pairs[x][1:4], ".") for x = 1:length(pairs)]
-        pair2 = [join(pairs[x][5:8], ".") for x = 1:length(pairs)]
-        stapair = hcat(stapair, permutedims(hcat(pair1, pair2)))
+        pairs = split.(keys(f_ref), "-")
+        pair1 = [pairs[x][1] for x = 1:length(pairs)]
+		pair2 = [pairs[x][2] for x = 1:length(pairs)]
+		comp = [pairs[x][3] for x = 1:length(pairs)]
+        stapair = hcat(stapair, permutedims(hcat(pair1, pair2, comp)))
         close(f_ref)
 
     catch
         println("reference not found (if stackmode=linear, please ignore this warning.).\n
 		 		use all potential station from basefile.")
+		error("need to update. Abort")
         reference = false
 
         inFile = jldopen(InputDict["basefiname"]*".jld2", "r")
@@ -69,7 +71,7 @@ function seisstack(InputDict::Dict)
     mkpath(fodir)
     InputDict["fodir"] = fodir
 
-    stapairlist = collect(zip(stapair[1,:], stapair[2,:]))
+    stapairlist = collect(zip(stapair[1,:], stapair[2,:], stapair[3,:]))
     InputDict["stapairlist"] = stapairlist
 
     # Parallelized by station pairs
@@ -85,7 +87,7 @@ end
 map_stack(InputDict, station)
 stack process for pmap
 """
-function map_stack(InputDict::Dict, station::Tuple{String,String})
+function map_stack(InputDict::Dict, station::Tuple)
 
     basefiname = InputDict["basefiname"]
     stackmode  = InputDict["stackmode"] #"clustered_selective", "selective" or "linear"
@@ -127,9 +129,10 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
     # station pairs
     stn1 = station[1]
     stn2 = station[2]
+	comp = station[3]
 
-    stnpair = stn1*"."*stn2
-    stnpairrev = stn2*"."*stn1
+    stnpair = stn1*"-"*stn2*"-"*comp
+    stnpairrev = stn2*"-"*stn1*"-"*comp
 
     #show progress
     progid = findfirst(x -> x==station, InputDict["stapairlist"])
@@ -138,7 +141,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
     end
 
     # output file name
-    foname     = InputDict["fodir"]*"/stack_$(stn1).$(stn2).jld2"
+    foname     = InputDict["fodir"]*"/stack_$(stn1)-$(stn2)-$(comp).jld2"
 
     if stackmode == "clustered_selective"
         init_coef_series =  Array{Float64,1}()
@@ -161,13 +164,35 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
 	# compute stack
     tscount = 0
+	all_full_stnkeywithcha = String[]
+
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
 
         f_cur = jldopen(basefiname*".$time.jld2")
-        stnkeys = keys(f_cur[time])
+        full_stnkeys = keys(f_cur[time])
+		# reformat full_stnkeys to stack group name format
+		nochan_stnkeys = String[]
 
+		for k = 1:length(full_stnkeys)
+			cur_stn1 = join(split(full_stnkeys[k], ".")[1:2], ".")
+			cur_stn2 = join(split(full_stnkeys[k], ".")[5:6], ".")
+			cur_comp = comp
+			push!(nochan_stnkeys, cur_stn1*"-"*cur_stn2*"-"*cur_comp)
+		end
         # load cross-correlation or its reverse
-        if stnpair ∈ stnkeys || stnpairrev ∈ stnkeys
+		#if stnpair ∈ stnkeys || stnpairrev ∈ stnkeys
+
+		#debug
+		if titer == 10
+			print("debug1: ")
+			println(cur_stn1*"-"*cur_stn2*"-"*cur_comp)
+		end
+
+		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
+
+			if titer > 20 && titer < 25
+				print("debug2: found stnpair ")
+			end
 
             # declare
             xcorr = CorrData()
@@ -175,13 +200,19 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
 
             if reference!=false
                 try
-                    if stnpair ∈ stnkeys
-                        xcorr = f_cur["$time/$stnpair"]
+                    if stnpair ∈ nochan_stnkeys
+						fullstnpair_id = findfirst(x -> x==stnpair, nochan_stnkeys)
+						fullstnpair = full_stnkeys[fullstnpair_id]
+                        xcorr = f_cur["$time/$fullstnpair"]
+						full_stnkeywithcha = fullstnpair
                         f_ref = jldopen(reference, "r")
                         ref = f_ref[stnpair]
                         close(f_ref)
                     else
-                        xcorr = f_cur["$time/$stnpairrev"]
+						fullstnpair_id = findfirst(x -> x==stnpairrev, nochan_stnkeys)
+						fullstnpair = full_stnkeys[fullstnpair_id]
+						full_stnkeywithcha = fullstnpair
+						xcorr = f_cur["$time/$fullstnpair"]
                         f_ref = jldopen(reference, "r")
                         ref = f_ref[stnpairrev]
                         close(f_ref)
@@ -197,10 +228,17 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
                 end
             else
                 # no reference:
-                if stnpair ∈ stnkeys
-                    xcorr = f_cur["$time/$stnpair"]
+                if stnpair ∈ nochan_stnkeys
+					fullstnpair_id = findfirst(x -> x==stnpair, nochan_stnkeys)
+					fullstnpair = full_stnkeys[fullstnpair_id]
+                    xcorr = f_cur["$time/$fullstnpair"]
+					full_stnkeywithcha = fullstnpair
+
                 else
-                    xcorr = f_cur["$time/$stnpairrev"]
+					fullstnpair_id = findfirst(x -> x==stnpairrev, nochan_stnkeys)
+					fullstnpair = full_stnkeys[fullstnpair_id]
+					xcorr = f_cur["$time/$fullstnpair"]
+					full_stnkeywithcha = fullstnpair
                 end
 
                 if filter!=false
@@ -262,7 +300,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
                 stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
 
-            if stnpairrev ∈ stnkeys
+            if stnpairrev ∈ nochan_stnkeys
                 xcorr.corr = reverse(xcorr.corr, dims=1)
             end
 
@@ -275,6 +313,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
             xcorr.maxlag = trunc(Int, N_maxlag)
             xcorr.corr = zeros(trunc(Int, N_maxlag),1)
 
+			full_stnkeywithcha = ""
             #if isempty(xcorr_temp.id)
 	    	# if xcorr_temp.fs == 0.0
             #     # store meta data to xcorr_temp
@@ -292,6 +331,9 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
         else
             xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
         end
+
+		push!(all_full_stnkeywithcha, full_stnkeywithcha)
+
     end
 
 	if tscount == 0
@@ -347,6 +389,7 @@ function map_stack(InputDict::Dict, station::Tuple{String,String})
     end
 
     xcorr_all.misc["T"] = T
+	xcorr_all.misc["channelpair"] = all_full_stnkeywithcha
 
     # save xcorr
     jldopen(foname, "w") do file
@@ -405,15 +448,32 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 	breakflag=false
 	for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
 		f_cur = jldopen(basefiname*".$time.jld2")
-		stnkeys = keys(f_cur[time])
+		full_stnkeys = keys(f_cur[time])
+		# reformat full_stnkeys to stack group name format
+		nochan_stnkeys = String[]
 
-		if stnpair ∈ stnkeys || stnpairrev ∈ stnkeys
-			# declare
+		for k = 1:length(full_stnkeys)
+			cur_stn1 = join(split(full_stnkeys[k], ".")[1:2], ".")
+			cur_stn2 = join(split(full_stnkeys[k], ".")[5:6], ".")
+			cur_comp1 =split(full_stnkeys[k], ".")[4]
+			cur_comp2 =split(full_stnkeys[k], ".")[8]
+			cur_comp=cur_comp1*cur_comp2
+			push!(nochan_stnkeys, cur_stn1*"-"*cur_stn2*"-"*cur_comp)
+		end
+
+		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
+
+			# declare: channel info will be lost through the time: only the first time step channel in CorrData is saved.
+
 			xcorr = CorrData()
-			if stnpair ∈ stnkeys
-				xcorr = f_cur["$time/$stnpair"]
+			if stnpair ∈ nochan_stnkeys
+				fullstnpair_id = findfirst(x -> x==stnpair, nochan_stnkeys)
+				fullstnpair = full_stnkeys[fullstnpair_id]
+				xcorr = f_cur["$time/$fullstnpair"]
 			else
-				xcorr = f_cur["$time/$stnpairrev"]
+				fullstnpair_id = findfirst(x -> x==stnpairrev, nochan_stnkeys)
+				fullstnpair = full_stnkeys[fullstnpair_id]
+				xcorr = f_cur["$time/$fullstnpair"]
 			end
 			# store meta data to xcorr_temp
 			xcorr_temp = deepcopy(xcorr)
