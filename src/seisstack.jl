@@ -13,7 +13,8 @@ function seisstack(InputDict::Dict)
 	#===
 	compute reference
 	===#
-	compute_reference_xcorr(InputDict)
+	# DEBUG
+	#compute_reference_xcorr(InputDict)
 
 	#===
 	compute stacking
