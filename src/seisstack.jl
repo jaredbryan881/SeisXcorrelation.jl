@@ -271,10 +271,21 @@ function map_stack(InputDict::Dict, station::Tuple)
 				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
 				xcorr.t = xcorr.t[vec(.!nancols)]
 
-                xcorr, ccList = selective_stacking(xcorr, ref, InputDict)
+				if isempty(xcorr.t)
+					# this is all NaN data so ignore
+					xcorr = CorrData()
+		            xcorr.fs = fs
+		            xcorr.maxlag = trunc(Int, N_maxlag)
+		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
 
-                nRem = length(findall(x->(x<threshold), ccList))
-                push!(rmList, nRem / nWins)
+				else
+					xcorr, ccList = selective_stacking(xcorr, ref, InputDict)
+
+					nRem = length(findall(x->(x<threshold), ccList))
+					push!(rmList, nRem / nWins)
+				end
+
+
 
             elseif stackmode == "clustered_selective"
                 println("clustered_selective is under implementatin! do linear stacking")
@@ -282,8 +293,15 @@ function map_stack(InputDict::Dict, station::Tuple)
 				nancols = any(isnan.(xcorr.corr), dims=1)
 				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
 				xcorr.t = xcorr.t[vec(.!nancols)]
-
-                stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
+				if isempty(xcorr.t)
+					# this is all NaN data so ignore
+					xcorr = CorrData()
+		            xcorr.fs = fs
+		            xcorr.maxlag = trunc(Int, N_maxlag)
+		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
+				else
+                	stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
+				end
 
                 # if reference!=false
                 #     f_ref=jldopen(reference)
@@ -306,8 +324,16 @@ function map_stack(InputDict::Dict, station::Tuple)
 				nancols = any(isnan.(xcorr.corr), dims=1)
 				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
 				xcorr.t = xcorr.t[vec(.!nancols)]
+				if isempty(xcorr.t)
+					# this is all NaN data so ignore
+					xcorr = CorrData()
+		            xcorr.fs = fs
+		            xcorr.maxlag = trunc(Int, N_maxlag)
+		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
+				else
+                	stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
+				end
 
-                stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
             end
 
             if stnpairrev ∈ nochan_stnkeys
