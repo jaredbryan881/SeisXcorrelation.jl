@@ -46,6 +46,7 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
     cc_step    = InputDict["cc_step"]
     to_whiten  = InputDict["to_whiten"]
     time_norm  = InputDict["time_norm"]
+    half_win   = InputDict["half_win"]
     # correlation parameters
     corrtype   = InputDict["corrtype"]   # "xcorr," "acorr," or "xchancorr" (or any combination thereof)
     corrmethod = InputDict["corrmethod"] # "cross-correlation", "deconv", or "coherence"
@@ -113,12 +114,19 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 FFTDict[stn1]
             else
                 FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+                # smooth FFT1 only if coherence is selected. Deconvolution will use only FFT2.
+                if corrmethod == "coherence"
+                    coherence!(FFT1, half_win)
+                end
+                # store FFT1
                 FFTDict[stn1] = FFT1
                 FFT1
             end
         catch y
             push!(tserrorList, "$tstamp/$stn1")
             filter!(a->a≠stn1, stlist)
+            println(y)
+            exit()
             println("$tstamp: $stn1 encountered an error on FFT. Skipping.")
             continue
         end
@@ -167,12 +175,19 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 npts2 = Int(time_unit * S2[1].fs)
                 if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[2,1]=npts2 end
 
-                # try to read FFT from cached FFTs
+                # try to read FFT from cached FFTs, compute if not found
                 FFT2 = try
                     if stn2 in keys(FFTDict)
                         FFTDict[stn2]
                     else
                         FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len), to_whiten=to_whiten, time_norm=time_norm)
+
+                        # smooth FFT2 if it hasn't been smoothed already
+                        if corrmethod == "coherence"
+                            coherence!(FFT2, half_win)
+                        end
+
+                        # store FFT2 in dict after smoothing
                         FFTDict[stn2] = FFT2
                         FFT2
                     end
@@ -187,6 +202,12 @@ function seisxcorrelation(data::Dict, tstamp::String, InputDict::Dict)
                 continue
             end
 
+            # TODO: find a way to store FFT2 for deconvolution without storing two sets of FFTs (smooth and unsmoothed)
+            # deconvolution divides the cross spectrum by the squared power spectrum of the second signal
+            # but each signal can be both source and receiver
+            if corrmethod == "deconv"
+                deconvolution!(FFT2, half_win)
+            end
             # compute correlation using SeisNoise.jl -- returns type CorrData
             xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
 

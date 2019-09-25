@@ -7,8 +7,8 @@ foname="/Users/jared/SCECintern2019/data/validation/verificationData.jld2"
 
 types = ["dampedSinusoid", "rickerConv", "realData", "spectSynth"]
 
-finame_xcorr="/Users/jared/SCECintern2019/data/reference/BPnetwork_2003/reference_xcorr/BPnetwork_2003_ref.jld2"
-dataset_xcorr="BP.CCRB..BP1.BP.VARB..BP1"
+finame_xcorr="/Users/jared/SCECintern2019/data/reference/BPnetwork_200345_ref.jld2"
+dataset_xcorr="BP.CCRB..BP1.BP.SMNB..BP1"
 xcf=jldopen(finame_xcorr)
 real_xcorr=xcf[dataset_xcorr]
 save=true
@@ -115,12 +115,16 @@ for dvV in dvVlist
         end
 
         if save
+            # damped sinusoid
             f["dampedSinusoid/$dvV.$noiselvl/ref"] = signal1_ds
             f["dampedSinusoid/$dvV.$noiselvl/cur"] = signal2_ds
+            # ricker conv
             f["rickerConv/$dvV.$noiselvl/ref"] = signal1_rc
             f["rickerConv/$dvV.$noiselvl/cur"] = signal2_rc
+            # real data
             f["realData/$dvV.$noiselvl/ref"] = xcorr
             f["realData/$dvV.$noiselvl/cur"] = stretch_xcorr
+            # spect synth
             f["spectSynth/$dvV.$noiselvl/ref"] = signal1_ss
             f["spectSynth/$dvV.$noiselvl/cur"] = signal2_ss
         end
