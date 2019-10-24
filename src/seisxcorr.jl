@@ -160,6 +160,12 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
                 tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
                                                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
+
+                # smooth FFT1 only if coherence is selected. Deconvolution will use only FFT2.
+                if corrmethod == "coherence"
+                   coherence!(FFT1, half_win)
+                end
+
                 #println("fft1: $tt1temp ")
                 FFTDict[stn1] = FFT1
                 FFT1
@@ -226,6 +232,10 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
                                         to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
 
+                        # smooth FFT2 if it hasn't been smoothed already
+                        if corrmethod == "coherence"
+                            coherence!(FFT2, half_win)
+                        end
                         #print("fft2: $tt2temp ")
                         FFTDict[stn2] = FFT2
                         FFT2
@@ -251,7 +261,13 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 # compute correlation using SeisNoise.jl -- returns type CorrData
                 #println(FFT1)
                 #println(FFT2)
-
+                # TODO: find a way to store FFT2 for deconvolution without storing two sets of FFTs (smooth and unsmoothed)
+                # deconvolution divides the cross spectrum by the squared power spectrum of the second signal
+                # but each signal can be both source and receiver
+                if corrmethod == "deconv"
+                    deconvolution!(FFT2, half_win)
+                end
+                
                 tt3temp = @elapsed xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
                 #print("xcorr: $tt3temp ")
                 varname = "$tstamp/$stn1.$stn2"
