@@ -136,7 +136,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                     continue
                 end
 
-                if size(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
+                if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
+
                 delete!(S1[1].misc, "kurtosis")
                 delete!(S1[1].misc, "eqtimewindow")
 
@@ -201,7 +202,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             continue
                         end
 
-                        if size(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
+                        if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
                         delete!(S2[1].misc, "kurtosis")
                         delete!(S2[1].misc, "eqtimewindow")
 
@@ -278,6 +279,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     close(inFile)
     close(outFile)
 end
+
 
 """
 
