@@ -66,6 +66,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     cc_step    = InputDict["cc_step"]
     to_whiten  = InputDict["to_whiten"]
     time_norm  = InputDict["time_norm"]
+    half_win  = InputDict["half_win"]
     maxdistance= InputDict["maxdistance"]
     # correlation parameters
     corrtype   = InputDict["corrtype"]   # "xcorr," "acorr," or "xchancorr" (or any combination thereof)
@@ -158,8 +159,19 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
                 if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
 
-                tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
-                                                to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
+
+#--------
+                phase_shift!(S1)
+                R1 = RawData(S1,Int(cc_len), Int(cc_step))
+                if time_norm == "one-bit"
+                    #println("apply one-bit normalization.")
+                    onebit!(R1)
+                end
+                #3. create FFTData
+                tt1temp = @elapsed FFT1 = compute_fft(R1)
+                # tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
+                #                                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
+#--------
 
                 # smooth FFT1 only if coherence is selected. Deconvolution will use only FFT2.
                 if corrmethod == "coherence"
@@ -171,6 +183,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 FFT1
             end
         catch y
+            println(y)
             push!(tserrorList, "$tstamp/$stn1")
             filter!(a->a≠stn1, stlist)
             println("$tstamp: $stn1 encountered an error on FFT1. Skipping.")
@@ -228,10 +241,19 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         npts2 = Int(time_unit * S2[1].fs)
 
                         if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[end,1]=npts2 end
-
-                        tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
-                                        to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
-
+#------------------------------------------------------------------#
+                        # Phase shift SeisChannel if starttime is not aligned with sampling period.
+                        phase_shift!(S2)
+                        R2 = RawData(S2,Int(cc_len), Int(cc_step))
+                        if time_norm == "one-bit"
+                            #println("apply one-bit normalization.")
+                            onebit!(R2)
+                        end
+                        #3. create FFTData
+                        tt2temp = @elapsed FFT2 = compute_fft(R2)
+                        # tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
+                        #                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
+#------------------------------------------------------------------#
                         # smooth FFT2 if it hasn't been smoothed already
                         if corrmethod == "coherence"
                             coherence!(FFT2, half_win)
@@ -259,16 +281,17 @@ function map_xcorr(tstamp::String, InputDict::Dict)
             if maxdistance==false || dist(FFT1.loc, FFT2.loc) <= maxdistance
 
                 # compute correlation using SeisNoise.jl -- returns type CorrData
-                #println(FFT1)
-                #println(FFT2)
+                #println(FFT1.t)
+                #println(FFT2.t)
+                #println(intersect(FFT1.t,FFT2.t))
                 # TODO: find a way to store FFT2 for deconvolution without storing two sets of FFTs (smooth and unsmoothed)
                 # deconvolution divides the cross spectrum by the squared power spectrum of the second signal
                 # but each signal can be both source and receiver
                 if corrmethod == "deconv"
                     deconvolution!(FFT2, half_win)
                 end
-                
-                tt3temp = @elapsed xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type=corrmethod)
+
+                tt3temp = @elapsed xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type="cross-correlation")
                 #print("xcorr: $tt3temp ")
                 varname = "$tstamp/$stn1.$stn2"
                 try
@@ -281,7 +304,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                     if stack==true stack!(xcorr, allstack=true) end
 
                     outFile[varname] = xcorr
-                catch
+                catch y
+                    println(y)
                     println("$stn1 and $stn2 have no overlap at $tstamp.")
                     push!(tserrorList, "$tstamp/$stn1")
                 end

@@ -1,6 +1,7 @@
 include("stacking.jl")
 include("reference.jl")
 
+using Statistics
 export seisstack
 
 """
@@ -150,9 +151,7 @@ function map_stack(InputDict::Dict, station::Tuple)
     if stackmode == "clustered_selective"
         init_coef_series =  Array{Float64,1}()
         max_coef_series  =  Array{Float64,1}()
-    elseif stackmode == "selective"
-        rmList = Array{Float64,1}()
-    end
+	end
 
     # time lags for xcorr
     lags = -maxlag:1/fs:maxlag
@@ -174,6 +173,11 @@ function map_stack(InputDict::Dict, station::Tuple)
 	all_full_stnkeywithcha = String[]
 
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
+
+		if stackmode == "selective" || stackmode == "clustered_selective"
+			# initialize removal fraction output
+	        rmList = Array{Float64,1}()
+	    end
 
         f_cur = jldopen(basefiname*".$time.jld2")
         full_stnkeys = keys(f_cur[time])
@@ -370,6 +374,23 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 		push!(all_full_stnkeywithcha, full_stnkeywithcha)
 
+		# output selective removal fraction
+		if (stackmode == "selective" || stackmode == "clustered_selective") && InputDict["IsOutputRemovalFrac"]
+			#output removal fraction on this channel
+			println(rmList)
+			mean1 = Statistics.mean(rmList)
+			std1 = Statistics.std(rmList)
+
+			# y, jd = parse.(Int64, split(time, ".")[1:2])
+			# tstamp_fname = replace(tstamp, ":" => "-")
+			fname_out = join([time, "selectiveremovalfraction","dat"], '.')
+			fodirtemp = split(basefiname, "/")
+			fodir = join(figdirtemp[1:end-2], "/")*"/selectiveremoval_fraction"
+			fopath = fodir*"/"*fname_out
+			open(fopath, "w") do io
+			   write(io, @sprintf("%f, %f\n", mean1, std1))
+			end
+		end
     end
 
 	if tscount == 0
