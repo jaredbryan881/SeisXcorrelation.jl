@@ -1,7 +1,7 @@
 include("stacking.jl")
 include("reference.jl")
 
-using Statistics
+using Statistics, Printf
 export seisstack
 
 """
