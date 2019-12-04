@@ -180,7 +180,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 	    end
 
         f_cur = jldopen(basefiname*".$time.jld2")
-        full_stnkeys = try keys(f_cur[time]) catch; return nothing; end
+        full_stnkeys = try keys(f_cur[time]) catch; continue; end
 		# reformat full_stnkeys to stack group name format
 		nochan_stnkeys = String[]
 
