@@ -1,7 +1,7 @@
 include("stacking.jl")
 include("reference.jl")
 
-using Statistics
+using Statistics, Printf
 export seisstack
 
 """
@@ -180,7 +180,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 	    end
 
         f_cur = jldopen(basefiname*".$time.jld2")
-        full_stnkeys = keys(f_cur[time])
+        full_stnkeys = try keys(f_cur[time]) catch; return nothing; end
 		# reformat full_stnkeys to stack group name format
 		nochan_stnkeys = String[]
 
@@ -304,7 +304,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 		            xcorr.maxlag = trunc(Int, N_maxlag)
 		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
 				else
-                	stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
+                	stack!(xcorr, allstack=true)
 				end
 
                 # if reference!=false
@@ -335,7 +335,8 @@ function map_stack(InputDict::Dict, station::Tuple)
 		            xcorr.maxlag = trunc(Int, N_maxlag)
 		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
 				else
-                	stack!(xcorr, allstack=true, phase_smoothing=phase_smoothing)
+                	stack!(xcorr, allstack=true)
+
 				end
 
             end
@@ -377,18 +378,25 @@ function map_stack(InputDict::Dict, station::Tuple)
 		# output selective removal fraction
 		if (stackmode == "selective" || stackmode == "clustered_selective") && InputDict["IsOutputRemovalFrac"]
 			#output removal fraction on this channel
-			println(rmList)
-			mean1 = Statistics.mean(rmList)
-			std1 = Statistics.std(rmList)
+			#println(rmList)
+			if isempty(rmList)
+				rmList = [NaN]
+			end
+
+			if stnpair ∈ nochan_stnkeys
+				fname_out = join([time, stnpair, "selectiveremovalfraction","dat"], '.')
+			else
+				fname_out = join([time, stnpairrev, "selectiveremovalfraction","dat"], '.')
+			end
 
 			# y, jd = parse.(Int64, split(time, ".")[1:2])
 			# tstamp_fname = replace(tstamp, ":" => "-")
-			fname_out = join([time, "selectiveremovalfraction","dat"], '.')
 			fodirtemp = split(basefiname, "/")
-			fodir = join(figdirtemp[1:end-2], "/")*"/selectiveremoval_fraction"
+			fodir = join(fodirtemp[1:end-2], "/")*"/selectiveremoval_fraction"
+			mkpath(fodir)
 			fopath = fodir*"/"*fname_out
 			open(fopath, "w") do io
-			   write(io, @sprintf("%f, %f\n", mean1, std1))
+			   write(io, @sprintf("%f\n", rmList[1]))
 			end
 		end
     end

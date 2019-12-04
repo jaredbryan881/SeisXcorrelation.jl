@@ -1,3 +1,4 @@
+using DSP
 export selective_stacking
 
 """
@@ -72,7 +73,7 @@ function selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict
             cohfilter=[0.0, ref.fs/2]
         end
         # set acceptable frequencies to use in mean coh calculation
-        freqs = rfftfreq(Int(coh_win_len*ref.fs), ref.fs)
+        freqs = DSP.rfftfreq(Int(coh_win_len*ref.fs), ref.fs)
         freq_inds = findall(x->(x>=cohfilter[1] && x<=cohfilter[2]), freqs)
 
         # compute correlation coefficient for each window in data with respect to reference
@@ -105,10 +106,10 @@ function selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict
     # linearly stack all data that exceeds the correlation-coefficient threshold
 
 	if !isnothing(good_fit)
-    	stackedData = stack(tempData, allstack=true, phase_smoothing=float(phase_smoothing))
+    	stackedData = stack(tempData, allstack=true)
 	else
 		println("debug: selective stacke no cc that threshold.")
-		stackedData = stack(data, allstack=true, phase_smoothing=float(phase_smoothing))
+		stackedData = stack(data, allstack=true)
 		# zero padding as there is no reasonable stack
 		stackedData.corr = zeros(length(data.corr(:,1)), 1)
 	end

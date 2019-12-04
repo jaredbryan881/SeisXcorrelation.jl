@@ -222,7 +222,13 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 
 	    # read unstacked xcorrs for each time stamp
 	    f_cur = jldopen(corrname*".$tstamp.jld2")
-	    grp = f_cur[tstamp] # xcorrs
+	    grp = try
+			f_cur[tstamp] # xcorrs
+		catch
+			ref_dict = Dict()
+			return ref_dict
+		end
+
 	    println("$tstamp")
 
 	    # iterate over station pairs
@@ -283,7 +289,7 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
 				xcorr.t = xcorr.t[vec(.!nancols)]
 
-	            stack!(xcorr, allstack=true, phase_smoothing=float(InputDict["phase_smoothing"]))
+	            stack!(xcorr, allstack=true)
 			else
 				error("stack mode $(stackmode) not defined.")
 	        end
