@@ -289,6 +289,7 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
 				xcorr.t = xcorr.t[vec(.!nancols)]
 
+				if isempty(xcorr.corr) continue; end
 	            stack!(xcorr, allstack=true)
 			else
 				error("stack mode $(stackmode) not defined.")
