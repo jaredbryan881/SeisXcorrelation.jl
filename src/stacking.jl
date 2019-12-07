@@ -106,8 +106,14 @@ function selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict
     # linearly stack all data that exceeds the correlation-coefficient threshold
 
 	if !isnothing(good_fit)
-    	try stackedData = stack(tempData, allstack=true) catch continue end
-	
+    	stackedData = try stack(tempData, allstack=true)
+
+		catch
+			stackedData = stack(data, allstack=true)
+			# zero padding as there is no reasonable stack
+			stackedData.corr = zeros(length(data.corr(:,1)), 1)
+		end
+
 	else
 		println("debug: selective stacke no cc that threshold.")
 		stackedData = stack(data, allstack=true)
