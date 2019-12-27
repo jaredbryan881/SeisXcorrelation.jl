@@ -1,7 +1,7 @@
 include("stacking.jl")
 include("reference.jl")
 
-using Statistics, Printf
+using Statistics, Printf, HashStack
 export seisstack
 
 """
@@ -11,11 +11,19 @@ compute stacking and save to jld2.
 """
 function seisstack(InputDict::Dict)
 
-	#===
-	compute reference
-	===#
-	# DEBUG
-	compute_reference_xcorr(InputDict)
+	# #===
+	# compute reference
+	# ===#
+	# # DEBUG
+	#
+	if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective"
+		###compute_reference_xcorr(InputDict)
+		error("selective reference has a bug in iteration. Currently not available.")
+	elseif InputDict["stackmode"] == "robust" ||  InputDict["stackmode"] == "hash"
+		robust_reference_xcorr(InputDict)
+	else
+		#error("stackmode is either linear, selective or robust").
+	end
 
 	#===
 	compute stacking
@@ -81,6 +89,7 @@ function seisstack(InputDict::Dict)
 
     str = "Stacking was successfully done.\n"
     printstyled(str; color=:green, bold=true)
+	return nothing
 end
 
 
@@ -485,7 +494,7 @@ function map_stack(InputDict::Dict, station::Tuple)
         if !ispath(figdir) mkpath(figdir); end
         #figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
         figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
-        savefig(p, figname)
+        ORCA.savefig(p, figname)
     end
 end
 

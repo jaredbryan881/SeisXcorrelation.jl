@@ -1,4 +1,4 @@
-export compute_reference_xcorr
+export compute_reference_xcorr, robust_reference_xcorr
 
 """
 compute_reference_xcorr(InputDict::Dict)
@@ -47,6 +47,12 @@ function compute_reference_xcorr(InputDict::Dict)
 				#NOTE: ref_dicts has fillstation pass key including channels
 
 				# collect all references into one dictionary at first iteration
+
+				#------------------------------------------------------------#
+				#DEBUG:
+				#Init reference has a bug: this should be also over the year
+				#------------------------------------------------------------#
+
 				ref_dict_out_init = Dict()
 
 				# Consider station pairs through the time regardless of channel
@@ -301,6 +307,169 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 	        else
 	            ref_dict[pair] = deepcopy(xcorr)
 	        end
+	    end
+
+	    close(f_cur) # current xcorr file
+
+	end
+
+    return ref_dict
+end
+
+#=======================================================================#
+#=======================================================================#
+#=======================================================================#
+
+
+"""
+robust_reference_xcorr(InputDict::Dict)
+
+compute and save reference cross-correlation function using robust stack.
+"""
+function robust_reference_xcorr(InputDict::Dict)
+    # computing reference xcorr
+    #===
+    Workflow:
+    1. get timestamps between ref_starttime and ref_endtime and get path to xcorr files
+    Note: only this process, you need to search among diferent years.
+    2. Compute day to day robust stack and store it into ref_corrdata
+    3. Compute robust stack over reference period
+    4. save final reference dict
+    ===#
+
+    Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+	refYear = split(InputDict["basefiname"],"/")[end-2]
+	refname = Output_rootdir*"/reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
+
+	ref_dict_out = Dict() # this contains {"stationpair" => CorrData}
+
+	# get xcorr path between ref_starttime and ref_endtime
+	ref_st =InputDict["ref_starttime"]
+	ref_et =InputDict["ref_endtime"]
+	ref_styear = Dates.Year(ref_st).value
+	ref_etyear = Dates.Year(ref_et).value
+
+	# collect all references into one dictionary at first iteration
+	ref_dict_dailystack = Dict()
+
+	for year = ref_styear:ref_etyear
+
+		corrname  = Output_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
+		f = jldopen(corrname*".jld2");
+		tslist = f["info/timestamplist"] # base xcorr file
+		close(f)
+
+		ref_dicts = []
+
+		# first iteration should be stack="linear" because no reference
+		ref_dicts = pmap(t->map_robustreference(t, InputDict, corrname), tslist)
+		#NOTE: ref_dicts has fillstation pass key including channels
+
+		# Consider station pairs through the time regardless of channel
+		# e.g. 1st day:NC.PDA..EHZ.NC.PCA..EHZ.  2nd day: NC.PCA..SHZ.NC.PDA..EHZ.
+		# this case above we regard it as same station pair so that stacking togeter with "NC.PDA-NC.PCA-ZZ".
+
+		for i=1:length(ref_dicts)
+			for stnkey in keys(ref_dicts[i])
+				xcorr_temp = ref_dicts[i][stnkey]
+				stnkey = xcorr_temp.name
+				stn1 = join(split(stnkey, ".")[1:2], ".")
+				stn2 = join(split(stnkey, ".")[5:6], ".")
+				comp = xcorr_temp.comp
+				nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+
+				if haskey(ref_dict_out_init, nochan_stnpair)
+					if !isempty(ref_dicts[i][stnkey].corr)
+	 					ref_dict_dailystack[nochan_stnpair].corr .+= ref_dicts[i][stnkey].corr
+					end
+		 		elseif haskey(ref_dict_out_init, nochan_stnpairrev)
+					if !isempty(ref_dicts[i][stnkey].corr)
+						ref_dict_dailystack[nochan_stnpair].corr .+= reverse(ref_dicts[i][stnkey].corr, dims=1)
+					end
+				else
+					# add new station pair into ref_dict_out with stnpair (reversed stnpair in other time steps is taken into account above.)
+					ref_dict_dailystack[nochan_stnpair] = deepcopy(ref_dicts[i][stnkey])
+				end
+			end
+		end
+	end
+
+
+	# save final reference (this works even if riter = 1)
+	f_out = jldopen(refname, "w")
+	for stnpair in keys(ref_dict_dailystack)
+		# #Debug
+		println(ref_dict_dailystack[stnpair])
+		f_out[stnpair] = robuststack!(ref_dict_dailystack[stnpair])
+		println(ref_dict_dailystack[stnpair])
+
+	end
+	close(f_out)
+
+	# output reference status
+	println("#---robust stacking for reference xcorr is successfully saved---#\n$(refname)\n#--------------------------------------------#.")
+	return nothing
+end
+
+"""
+    map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
+
+Robust stack cross-correlation functions for all given station pairs to generate a reference cross-correlation.
+
+# Arguments
+- `tstamp::String`    :
+- `InputDict::Dict` : input dictionary
+- `corrname::String,`    : Input base file name
+
+# Output
+- `foname.jld2`    : contains arrays of reference cross-correlations for each station pair
+"""
+function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
+    # hold reference xcorrs in memory and write all at once
+	ref_dict = Dict()
+
+	# if this time stamp is not in the ref_start and end time, skip stacking
+	y, jd = parse.(Int64, split(tstamp, ".")[1:2])
+	m, d  = j2md(y,jd)
+	curdate=DateTime(y, m, d)
+
+	if curdate >= InputDict["ref_starttime"] && curdate <= InputDict["ref_endtime"]
+		#this time stamp is taken into account to stack
+
+	    # read unstacked xcorrs for each time stamp
+	    f_cur = jldopen(corrname*".$tstamp.jld2")
+	    grp = try
+			f_cur[tstamp] # xcorrs
+		catch
+			ref_dict = Dict()
+			return ref_dict
+		end
+
+	    println("$tstamp")
+
+	    # iterate over station pairs
+	    for pair in sort(keys(grp))
+	        # Implemented -> TODO: use only unique station pairings when creating references. Currently no guarantee of uniqueness (reverse can exist)
+	        # load xcorr
+	        xcorr = try grp[pair] catch; continue end
+
+	        #remove_nan!(xcorr)
+	        # stack xcorrs over length of CorrData object using either "selective" stacking or "linear" stacking
+
+			if InputDict["filter"] !=false
+				xcorr = bandpass(xcorr.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
+			end
+
+			robuststack!(xcorr)
+
+			# stack xcorrs if they have a key, assign key if not
+			if haskey(ref_dict, pair)
+				ref_dict[pair].corr .+= xcorr.corr
+			else
+				ref_dict[pair] = deepcopy(xcorr)
+			end
+
 	    end
 
 	    close(f_cur) # current xcorr file
