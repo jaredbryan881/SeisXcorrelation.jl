@@ -16,16 +16,14 @@ function seisstack(InputDict::Dict)
 	# ===#
 	# # DEBUG
 	#
-
-
-	# if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective"
-	# 	###compute_reference_xcorr(InputDict)
-	# 	error("selective reference has a bug in iteration. Currently not available.")
-	# elseif InputDict["stackmode"] == "robust" ||  InputDict["stackmode"] == "hash"
-	# 	robust_reference_xcorr(InputDict)
-	# else
-	# 	#error("stackmode is either linear, selective or robust").
-	# end
+	if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective"
+		###compute_reference_xcorr(InputDict)
+		error("selective reference has a bug in iteration. Currently not available.")
+	elseif InputDict["stackmode"] == "robust" ||  InputDict["stackmode"] == "hash"
+		robust_reference_xcorr(InputDict)
+	else
+		#error("stackmode is either linear, selective or robust").
+	end
 
 	#===
 	compute stacking
@@ -124,7 +122,6 @@ function map_stack(InputDict::Dict, station::Tuple)
     end
 
 	reference = InputDict["referencepath"]
-
 	if !ispath(reference)
         reference = false
     end
@@ -160,11 +157,20 @@ function map_stack(InputDict::Dict, station::Tuple)
     # output file name
     foname     = InputDict["fodir"]*"/stack_$(stn1)-$(stn2)-$(comp).jld2"
 
+    if stackmode == "clustered_selective"
+        init_coef_series =  Array{Float64,1}()
+        max_coef_series  =  Array{Float64,1}()
+	end
+
     # time lags for xcorr
     lags = -maxlag:1/fs:maxlag
 
 	#save metadata
+
 	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, N_maxlag, stnpair, stnpairrev)
+
+	# print("xcorr: ")
+	# println(xcorr_temp)
 
 	if typeof(xcorr_temp) != CorrData
 		# no data available with this stnpair
@@ -177,7 +183,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
 
-		if stackmode == "selective" || stackmode == "hash"
+		if stackmode == "selective" || stackmode == "clustered_selective"
 			# initialize removal fraction output
 	        rmList = Array{Float64,1}()
 	    end
@@ -193,115 +199,154 @@ function map_stack(InputDict::Dict, station::Tuple)
 			cur_comp = comp
 			push!(nochan_stnkeys, cur_stn1*"-"*cur_stn2*"-"*cur_comp)
 		end
+        # load cross-correlation or its reverse
+		#if stnpair ∈ stnkeys || stnpairrev ∈ stnkeys
+
+		#debug
+		# if titer == 1
+		# 	print("debug1: ")
+		# 	println(nochan_stnkeys)
+		# end
+
+		# println(stnpair ∈ nochan_stnkeys)
+		# println(stnpairrev ∈ nochan_stnkeys)
 
 		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 
-            # # declare
-            # xcorr = CorrData()
-            # ref   = CorrData()
+			# if titer > 1 && titer < 5
+			# 	print("debug2: found stnpair ")
+			# end
 
-            if reference != false
-				# read curent and reference
-                if stnpair ∈ nochan_stnkeys
-					ref_stnpair = stnpair
-				else
-					ref_stnpair = stnpairrev
-				end
+            # declare
+            xcorr = CorrData()
+            ref   = CorrData()
 
-				fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
-				fullstnpair = full_stnkeys[fullstnpair_id]
-                xcorr = try
-					f_cur["$time/$fullstnpair"]
-				catch
-					println("current not found. make reference = false")
-					reference = false
-				end
+            if reference!=false
+                try
+                    if stnpair ∈ nochan_stnkeys
+						fullstnpair_id = findfirst(x -> x==stnpair, nochan_stnkeys)
+						fullstnpair = full_stnkeys[fullstnpair_id]
+                        xcorr = f_cur["$time/$fullstnpair"]
+						full_stnkeywithcha = fullstnpair
+                        f_ref = jldopen(reference, "r")
+                        ref = f_ref[stnpair]
+                        close(f_ref)
+                    else
+						fullstnpair_id = findfirst(x -> x==stnpairrev, nochan_stnkeys)
+						fullstnpair = full_stnkeys[fullstnpair_id]
+						full_stnkeywithcha = fullstnpair
+						xcorr = f_cur["$time/$fullstnpair"]
+                        f_ref = jldopen(reference, "r")
+                        ref = f_ref[stnpairrev]
+                        close(f_ref)
+                    end
 
-				full_stnkeywithcha = fullstnpair
-
-                f_ref = jldopen(reference, "r")
-
-                ref = try
-					f_ref[ref_stnpair]
-				catch
-					println("reference not found. make reference = false")
-					reference = false
-
-				end
-                close(f_ref)
-
-                if filter == true
-                    xcorr.corr = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
-                    ref.corr   = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
-				end
-
+                    if filter!=false
+                        xcorr.corr = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+                        ref.corr   = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+                    end
+                catch
+                    println("reference not found. make reference = false")
+                    reference = false
+                end
             else
                 # no reference:
-				if stnpair ∈ nochan_stnkeys
-					ref_stnpair = stnpair
-				else
-					ref_stnpair = stnpairrev
-				end
+                if stnpair ∈ nochan_stnkeys
+					fullstnpair_id = findfirst(x -> x==stnpair, nochan_stnkeys)
+					fullstnpair = full_stnkeys[fullstnpair_id]
+                    xcorr = f_cur["$time/$fullstnpair"]
+					full_stnkeywithcha = fullstnpair
 
-				fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
-				fullstnpair = full_stnkeys[fullstnpair_id]
-                xcorr = f_cur["$time/$fullstnpair"]
-				full_stnkeywithcha = fullstnpair
+                else
+					fullstnpair_id = findfirst(x -> x==stnpairrev, nochan_stnkeys)
+					fullstnpair = full_stnkeys[fullstnpair_id]
+					xcorr = f_cur["$time/$fullstnpair"]
+					full_stnkeywithcha = fullstnpair
+                end
 
-
-                if filter == true
+                if filter!=false
                     xcorr.corr = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
                 end
             end
 
+            # if isempty(xcorr_temp.id) initiate xcorr_temp
+	    	# if xcorr_temp.fs == 0.0
+            #     # store meta data to xcorr_temp
+            #     xcorr_temp = deepcopy(xcorr)
+            #     xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
+            # end
+
             nWins = length(xcorr.corr[1,:])
 
-			xcorr.corr , nanzerocol = remove_nanandzerocol(xcorr.corr)
-			xcorr.t = xcorr.t[nanzerocol]
+            if stackmode == "selective"
 
-			# stack shotttime-window cc per unit time
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
 
-			if isempty(xcorr.corr) ||
-				reference == false && stackmode == "selective" ||
-				reference == false && stackmode == "hash"
-				# skip this pair as there is no cc function
-				# or no reference while selective/hash stack
-				println("no ref hash test")
-				xcorr = CorrData()
-				xcorr.fs = fs
-				xcorr.maxlag = trunc(Int, N_maxlag)
-				xcorr.corr = zeros(trunc(Int, N_maxlag),1)
-				full_stnkeywithcha = ""
+				if isempty(xcorr.t)
+					# this is all NaN data so ignore
+					xcorr = CorrData()
+		            xcorr.fs = fs
+		            xcorr.maxlag = trunc(Int, N_maxlag)
+		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
 
-			# switch the stacking method
-			elseif stackmode == "linear"
+				else
+					xcorr, ccList = selective_stacking(xcorr, ref, InputDict)
 
-				stack!(xcorr, allstack=true)
+					nRem = length(findall(x->(x<threshold), ccList))
+					push!(rmList, nRem / nWins)
+				end
 
-            elseif stackmode == "selective"
 
-				xcorr, ccList = selective_stacking(xcorr, ref, InputDict)
-				nRem = length(findall(x->(x<threshold), ccList))
-				push!(rmList, nRem / nWins)
 
-			elseif stackmode == "robust"
+            elseif stackmode == "clustered_selective"
+                println("clustered_selective is under implementatin! do linear stacking")
+				# avoid NaN in xcorr
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
+				if isempty(xcorr.t)
+					# this is all NaN data so ignore
+					xcorr = CorrData()
+		            xcorr.fs = fs
+		            xcorr.maxlag = trunc(Int, N_maxlag)
+		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
+				else
+                	stack!(xcorr, allstack=true)
+				end
 
-				robuststack!(xcorr)
+                # if reference!=false
+                #     f_ref=jldopen(reference)
+                #     ref = f_ref[stnpair]
+                #
+                #     if filter!=false
+                #         ref.corr = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+                #     end
+                #     #xcorr, ccList = selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
+                #     xcorr, initcoef, maxcoef = clustered_selective_stacking(xcorr, ref, threshold=threshold, metric=metric, filter=filter, slice=slice)
+                #     close(f_ref)
+                # end
+                # #nRem = length(findall(x->(x<threshold), ccList))
+                # #push!(rmList, nRem / nWins)
+                # push!(init_coef_series, initcoef)
+                # push!(max_coef_series, maxcoef)
 
-			elseif stackmode == "hash"
+            else
+				# avoid NaN in xcorr
+				nancols = any(isnan.(xcorr.corr), dims=1)
+				xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+				xcorr.t = xcorr.t[vec(.!nancols)]
+				if isempty(xcorr.t)
+					# this is all NaN data so ignore
+					xcorr = CorrData()
+		            xcorr.fs = fs
+		            xcorr.maxlag = trunc(Int, N_maxlag)
+		            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
+				else
+                	stack!(xcorr, allstack=true)
 
-				# @show xcorr.corr[200:400, 1]
-				# @show ref.corr[200:400, 1]
-				hashstack!(xcorr, ref,
-					max_num_substack 		= 1e3,
-					cc_substack_threshold 	= 0.3,
-					SNR_threshold 			= 0.0)
-
-				cc_coef = cor(xcorr.corr, ref.corr)
-				@show cc_coef
-
-			else
-				error("stack mode $stackmode does not exist.")
+				end
 
             end
 
@@ -317,19 +362,21 @@ function map_stack(InputDict::Dict, station::Tuple)
             xcorr.fs = fs
             xcorr.maxlag = trunc(Int, N_maxlag)
             xcorr.corr = zeros(trunc(Int, N_maxlag),1)
+
 			full_stnkeywithcha = ""
+            #if isempty(xcorr_temp.id)
+	    	# if xcorr_temp.fs == 0.0
+            #     # store meta data to xcorr_temp
+            #     xcorr_temp = deepcopy(xcorr)
+            #     xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
+            # end
         end
 
         close(f_cur)
 
         norm_factor = maximum(abs.(xcorr.corr[:, 1]))
 
-		if iszero(norm_factor)
-			# this time is filled by zero; fill corr with NaN
-			xcorr.corr .= NaN
-			xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
-
-        elseif IsNormalizedampperUnit && !iszero(norm_factor) #to avoid deviding by zero
+        if IsNormalizedampperUnit && !iszero(norm_factor) #to avoid deviding by zero
             xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
         else
             xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
@@ -338,7 +385,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 		push!(all_full_stnkeywithcha, full_stnkeywithcha)
 
 		# output selective removal fraction
-		if (stackmode == "selective") && InputDict["IsOutputRemovalFrac"]
+		if (stackmode == "selective" || stackmode == "clustered_selective") && InputDict["IsOutputRemovalFrac"]
 			#output removal fraction on this channel
 			#println(rmList)
 			if isempty(rmList)
@@ -364,6 +411,9 @@ function map_stack(InputDict::Dict, station::Tuple)
     end
 
 	if tscount == 0
+		# if CIflag == 1
+		# 	println("return nothing because tscount = 0")
+		# end
 		#no data for this station pair
 		#println("debug: nostationpair")
 		return nothing
@@ -371,7 +421,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 
     #===
-    Manipulate stacking by unit num per stack
+    Manipulate stacking by unitnumperstack
     ===#
 
     xcorr_all = deepcopy(xcorr_temp)
@@ -500,27 +550,27 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 			# declare: channel info will be lost through the time: only the first time step channel in CorrData is saved.
 
 			xcorr = CorrData()
-
 			if stnpair ∈ nochan_stnkeys
-				ref_stnpair = stnpair
+				fullstnpair_id = findfirst(x -> x==stnpair, nochan_stnkeys)
+				fullstnpair = full_stnkeys[fullstnpair_id]
+				xcorr = f_cur["$time/$fullstnpair"]
 			else
-				ref_stnpair = stnpairrev
-			end
-
-			if stnpair ∈ nochan_stnkeys
-				fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
+				fullstnpair_id = findfirst(x -> x==stnpairrev, nochan_stnkeys)
 				fullstnpair = full_stnkeys[fullstnpair_id]
 				xcorr = f_cur["$time/$fullstnpair"]
 			end
 			# store meta data to xcorr_temp
 			xcorr_temp = deepcopy(xcorr)
 			xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
-
-			return xcorr_temp
+			breakflag=true
+			break;
 		end
 	end
 
-	# no data available with this stnpair
-	return 1
-
+	if breakflag == true
+		return xcorr_temp
+	else
+		# no data available with this stnpair
+		return 1
+	end
 end

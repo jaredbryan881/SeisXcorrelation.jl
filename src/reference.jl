@@ -1,5 +1,5 @@
-export compute_reference_xcorr, robust_reference_xcorr
-
+export compute_reference_xcorr, robust_reference_xcorr, remove_nanandzerocol
+using Statistics
 """
 compute_reference_xcorr(InputDict::Dict)
 
@@ -379,13 +379,15 @@ function robust_reference_xcorr(InputDict::Dict)
 				nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
 				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
 
-				if haskey(ref_dict_out_init, nochan_stnpair)
+				if haskey(ref_dict_dailystack, nochan_stnpair)
 					if !isempty(ref_dicts[i][stnkey].corr)
-	 					ref_dict_dailystack[nochan_stnpair].corr .+= ref_dicts[i][stnkey].corr
+	 					ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+						 ref_dicts[i][stnkey].corr)
 					end
-		 		elseif haskey(ref_dict_out_init, nochan_stnpairrev)
+		 		elseif haskey(ref_dict_dailystack, nochan_stnpairrev)
 					if !isempty(ref_dicts[i][stnkey].corr)
-						ref_dict_dailystack[nochan_stnpair].corr .+= reverse(ref_dicts[i][stnkey].corr, dims=1)
+						ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+						 reverse(ref_dicts[i][stnkey].corr, dims=1))
 					end
 				else
 					# add new station pair into ref_dict_out with stnpair (reversed stnpair in other time steps is taken into account above.)
@@ -400,9 +402,12 @@ function robust_reference_xcorr(InputDict::Dict)
 	f_out = jldopen(refname, "w")
 	for stnpair in keys(ref_dict_dailystack)
 		# #Debug
-		println(ref_dict_dailystack[stnpair])
+		#println(ref_dict_dailystack[stnpair])
+		#@show any(isnan.(ref_dict_dailystack[stnpair].corr), dims=1)
 		f_out[stnpair] = robuststack!(ref_dict_dailystack[stnpair])
-		println(ref_dict_dailystack[stnpair])
+		#@show any(isnan.(f_out[stnpair].corr), dims=1)
+
+		# println(ref_dict_dailystack[stnpair])
 
 	end
 	close(f_out)
@@ -461,7 +466,35 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 				xcorr = bandpass(xcorr.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
 			end
 
+			# nancols = any(isnan.(xcorr.corr), dims=1)
+			# xcorr.corr = xcorr.corr[:, vec(.!nancols)]
+
+			xcorr.corr , nanzerocol = remove_nanandzerocol(xcorr.corr)
+			xcorr.t = xcorr.t[nanzerocol]
+
+			if isempty(xcorr.corr)
+				#skip this pair as there is no cc function
+				continue;
+			end
+			# @show any(isnan.(xcorr.corr), dims=1)
+			# debugxcorr = deepcopy(xcorr)
+
+			# println(vec(.!nancols))
+			# println(xcorr.corr)
+
 			robuststack!(xcorr)
+			#
+			# print("nancheck:")
+			# @show any(isnan.(xcorr.corr), dims=1)
+
+			if any(x-> x == true, any(isnan.(xcorr.corr), dims=1))
+				println("found nan in xcorr.corr.")
+				#@show(debugxcorr.corr)
+				robuststack_debug!(debugxcorr)
+
+				#println(xcorr.corr)
+				error("Nan found in stacked trace. abort")
+			end
 
 			# stack xcorrs if they have a key, assign key if not
 			if haskey(ref_dict, pair)
@@ -478,3 +511,105 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 
     return ref_dict
 end
+
+
+"""
+	remove_nancol(A::AbstractArray)
+
+Remove column (i.e. trace) which has NaN.
+"""
+function remove_nanandzerocol(A::AbstractArray)
+
+	N = size(A, 2)
+	nancol = ones(Int64, N)
+	for i = 1:N
+		if any(isnan.(A[:, i])) || all(iszero, A[:,i])
+			# this has NaN in its column
+			nancol[i] = 0
+		end
+	end
+
+	nancol=convert.(Bool, nancol)
+	return A[:, nancol], nancol
+
+end
+#
+#
+# """
+#   robuststack_debug(A)
+# Performs robust stack on array `A`.
+# Follows methods of Pavlis and Vernon, 2010.
+# # Arguments
+# - `A::AbstractArray`: Time series stored in columns.
+# - `ϵ::AbstractFloat`: Threshold for convergence of robust stack.
+# - `maxiter::Int`: Maximum number of iterations to converge to robust stack.
+# """
+# function robuststack_debug(A::AbstractArray{T};ϵ::AbstractFloat=Float32(1e-6),
+#                      maxiter::Int=10) where T <: AbstractFloat
+#     N = size(A,2)
+#     Bold = median(A,dims=2)
+#     w = Array{T}(undef,N)
+#     r = Array{T}(undef,N)
+#     d2 = Array{T}(undef,N)
+#
+#     # do 2-norm for all columns in A
+#     for ii = 1:N
+#         d2[ii] = norm(A[:,ii],2)
+#     end
+#
+#     BdotD = sum(A .* Bold,dims=1)
+#
+#     for ii = 1:N
+#
+# 		@show BdotD[ii]
+# 		@show Bold
+# 		@show A[:,ii]
+#
+#         r[ii] = norm(A[:,ii] .- (BdotD[ii] .* Bold),2)
+#         w[ii] = abs(BdotD[ii]) ./ d2[ii] ./ r[ii]
+#
+# 		@show r[ii]
+# 		@show w[ii]
+#
+#     end
+#
+#     w ./= sum(w)
+#
+# 	@show r
+#
+# 	@show d2
+#
+#  	@show w
+#
+# 	@show A
+#
+#     Bnew = mean(A,weights(w),dims=2)
+# 	@show Bnew
+#
+#     # check convergence
+#     ϵN = norm(Bnew .- Bold,2) / (norm(Bnew,2) * N)
+#     Bold = Bnew
+#     iter = 0
+#     while (ϵN > ϵ) && (iter <= maxiter)
+#         BdotD = sum(A .* Bold,dims=1)
+#
+#         for ii = 1:N
+#             r[ii] = norm(A[:,ii] .- (BdotD[ii] .* Bold),2)
+#             w[ii] = abs(BdotD[ii]) ./ d2[ii] ./ r[ii]
+#         end
+#         w ./= sum(w)
+#
+#         Bnew = mean(A,weights(w),dims=2)
+#
+#         # check convergence
+#         ϵN = norm(Bnew .- Bold,2) / (norm(Bnew,2) * N)
+#         Bold = Bnew
+#         iter += 1
+#     end
+#     return Bnew
+# end
+# robuststack_debug!(C::CorrData;ϵ::AbstractFloat=eps(Float32)) =
+#        (C.corr = robuststack_debug(C.corr,ϵ=ϵ); C.t = C.t[1:1]; return C)
+# robuststack_debug(C::CorrData;ϵ::AbstractFloat=eps(Float32))  =
+#        (U = deepcopy(C); U.corr = robuststack_debug(U.corr,ϵ=ϵ); U.t = U.t[1:1];
+#        return U)
