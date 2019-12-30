@@ -1,7 +1,8 @@
+include("utils.jl")
 include("stacking.jl")
 include("reference.jl")
 
-using Statistics, Printf, HashStack
+using Statistics, FileIO, Printf, HashStack
 export seisstack
 
 """
@@ -17,15 +18,14 @@ function seisstack(InputDict::Dict)
 	# # DEBUG
 	#
 
-
-	# if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective"
-	# 	###compute_reference_xcorr(InputDict)
-	# 	error("selective reference has a bug in iteration. Currently not available.")
-	# elseif InputDict["stackmode"] == "robust" ||  InputDict["stackmode"] == "hash"
-	# 	robust_reference_xcorr(InputDict)
-	# else
-	# 	#error("stackmode is either linear, selective or robust").
-	# end
+	if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective"
+		compute_reference_xcorr(InputDict)
+		# error("selective reference has a bug in iteration. Currently not available.")
+	elseif InputDict["stackmode"] == "robust" ||  InputDict["stackmode"] == "hash"
+		robust_reference_xcorr(InputDict)
+	else
+		#error("stackmode is either linear, selective or robust").
+	end
 
 	#===
 	compute stacking
@@ -104,7 +104,6 @@ function map_stack(InputDict::Dict, station::Tuple)
 
     basefiname = InputDict["basefiname"]
     stackmode  = InputDict["stackmode"] #"clustered_selective", "selective" or "linear"
-	phase_smoothing = InputDict["phase_smoothing"]
     unitnumperstack = trunc(Int, InputDict["unitnumperstack"]) #num of stacking timestamp per unit stack (ex. 1 day = 1unit or 1month = 30unit)
     overlapperstack = trunc(Int, InputDict["overlapperstack"]) #num of overlapperstack per unit stack (ex. 1 day = 1unit or 1month = 30unit)
     savefig    = InputDict["savefig"]
@@ -266,7 +265,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 				reference == false && stackmode == "hash"
 				# skip this pair as there is no cc function
 				# or no reference while selective/hash stack
-				println("no ref hash test")
+				println("Reference does not exist. continue.")
 				xcorr = CorrData()
 				xcorr.fs = fs
 				xcorr.maxlag = trunc(Int, N_maxlag)
@@ -280,7 +279,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
             elseif stackmode == "selective"
 
-				xcorr, ccList = selective_stacking(xcorr, ref, InputDict)
+				xcorr, ccList = selective_stack(xcorr, ref, InputDict)
 				nRem = length(findall(x->(x<threshold), ccList))
 				push!(rmList, nRem / nWins)
 
@@ -292,10 +291,17 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 				# @show xcorr.corr[200:400, 1]
 				# @show ref.corr[200:400, 1]
+
+				statsdir = InputDict["fodir"]*"/../hashstack_stats"
+		        if !ispath(statsdir) mkpath(statsdir); end
+
 				hashstack!(xcorr, ref,
 					max_num_substack 		= 1e3,
 					cc_substack_threshold 	= 0.3,
-					SNR_threshold 			= 0.0)
+					SNR_threshold 			= 0.0,
+					output_stats = true, # if output status hdf5 file to check the process
+					output_stats_dir = statsdir, # directory of output status hdf5 file to check the process
+					)
 
 				cc_coef = cor(xcorr.corr, ref.corr)
 				@show cc_coef
@@ -445,6 +451,10 @@ function map_stack(InputDict::Dict, station::Tuple)
         #figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
         figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
         ORCA.savefig(p, figname)
+
+		# save heatmap matrix for replot
+		figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2).jld2"
+		FileIO.save(figjldname, "heatmap", xcorr_all.corr)
     end
 end
 

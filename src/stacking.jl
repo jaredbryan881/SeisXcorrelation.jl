@@ -1,8 +1,9 @@
 using DSP
-export selective_stacking
+
+export selective_stack
 
 """
-    selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict)
+    selective_stack(data::CorrData, reference::CorrData, InputDict::Dict)
 
 Stack the windows in a CorrData object that exceed a correlation-coefficient threshold with respect to a reference.
 
@@ -16,44 +17,38 @@ Stack the windows in a CorrData object that exceed a correlation-coefficient thr
 - `stackedData::CorrData,`    : Slectively stacked data
 - `cList::Array{Float64,1}`    : Correlation coefficient of each window with respect to the reference
 """
-function selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict)
+function selective_stack(data::CorrData, reference::CorrData, InputDict::Dict)
 
 	 threshold 			= InputDict["threshold"]
-	 slice 				= InputDict["timeslice"]
+	 dtt_v 				= InputDict["dtt_v"]
 	 metric 			= InputDict["metric"]
 	 coh_win_len 		= InputDict["coh_win_len"]
 	 coh_win_step 		= InputDict["coh_win_step"]
 	 cohfilter 			= InputDict["cohfilter"]
-	 phase_smoothing 	= InputDict["phase_smoothing"]
 
-    # slice data if given a time window
+    # slice data to remove ballistic wave if given ballistic wave velocity
     # TODO: find a better way to pass arguments to this function that only apply to coh, or only to cc. e.g., win_len has no meaning if metric=="cc"
-    if typeof(slice) != Bool
+    if typeof(dtt_v) != Bool
         ref = deepcopy(reference)
         d = deepcopy(data)
-        if typeof(slice)==Float64
-            # time vector
-            tvec = -reference.maxlag:1/reference.fs:reference.maxlag
-            # find all times within [-slice,slice] time
-            t_inds = findall(x->(x>=-slice && x<=slice), tvec)
+        # time vector
 
-            # slice reference (maintain 2d array)
-            ref.corr = reference.corr[t_inds, :]
-            # slice data (maintain 2d array)
-            d.corr = data.corr[t_inds, :]
-        elseif typeof(slice)==Array{Float64,1}
-            # convert startlag/endlag[s] to startlag/windowlength[samples]
-            win_len = Int(diff(slice)[1] * reference.fs)
-            startlag = Int(slice[1] * reference.fs)
+		ballistic_arrival_time = data.dist/dtt_v
+		tvec = -data.maxlag:1/data.fs:data.maxlag
 
-            # partition reference to keep only the coda
-            ref.corr = partition(reference.corr, startlag, win_len)
-            # partition data to keep only the coda
-            d.corr = partition(data.corr, startlag, win_len)
-        else
-            println("Please choose an allowable slicing operation. Exiting.")
-            exit()
-        end
+		if length(tvec) != size(d.corr, 1); error("length of time vector is not correct."); end
+
+		coda_ind = findall(x->abs(x) >  ballistic_arrival_time, tvec)
+
+        # slice reference (maintain 2d array)
+        ref.corr = reference.corr[coda_ind, :]
+        # slice data (maintain 2d array)
+        d.corr = data.corr[coda_ind, :]
+
+		# println(size(ref.corr, 1))
+		# println(size(d.corr, 1))
+		# @assert size(ref.corr, 1) == size(d.corr, 1)
+
     else
         # default to full reference cross-correlation
 		ref = deepcopy(reference)
@@ -86,45 +81,25 @@ function selective_stacking(data::CorrData, reference::CorrData, InputDict::Dict
         cList = mcohList .* sign.(ccList)
     end
 
-    # find windows that exceed the threshold
-    if typeof(slice)==Array{Float64,1}
-        # keep only xcorrs coherent in positive && negative coda
-        # for now, we take only the windowed cross-correaltions that improve both the positive and negative coda
-        good_fit_neg = findall(x->(x>=threshold), cList[1:Int(length(cList)/2)])
-        good_fit_pos = findall(x->(x>=threshold), cList[Int(length(cList)/2+1):end])
-        good_fit = intersect(good_fit_neg, good_fit_pos)
-    else
-        # find cross-correlations that fall below the cc threshold
-        good_fit = findall(x->(x>=threshold), cList)
-    end
+	good_fit = findall(x->(x>=threshold), cList)
 
     # copy data to extract well-fitting windows
-    tempData = deepcopy(data)
-    tempData.corr = tempData.corr[:, good_fit]
+	stackedData = deepcopy(data)
+	stackedData.corr =	stackedData.corr[:, good_fit]
 
-    #print("debug1")
-    # linearly stack all data that exceeds the correlation-coefficient threshold
+	# avoid NaN and zero column
+	stackedData.corr , nanzerocol = remove_nanandzerocol(stackedData.corr)
 
-	if !isnothing(good_fit)
-    	stackedData = try stack(tempData, allstack=true)
-
-		catch
-			stackedData = stack(data, allstack=true)
-			# zero padding as there is no reasonable stack
-			stackedData.corr = zeros(length(data.corr(:,1)), 1)
-		end
+	if isempty(stackedData.corr)
+		# NaN padding as there is no reasonable stack
+		stackedData.corr = zeros(length(data.corr[:,1]), 1)
+		stackedData.corr .= NaN
 
 	else
-		println("debug: selective stacke no cc that threshold.")
-		stackedData = stack(data, allstack=true)
-		# zero padding as there is no reasonable stack
-		stackedData.corr = zeros(length(data.corr(:,1)), 1)
+		# linearly stack all data that exceeds the correlation-coefficient threshold
+		stack!(stackedData, allstack=true)
 	end
 
-    if any(isnan.(stackedData.corr))
-		#println("Nan found in stack.jl temoData")
-    end
-    #println("... end")
     return stackedData, cList
 end
 
