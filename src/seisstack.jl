@@ -2,7 +2,7 @@ include("utils.jl")
 include("stacking.jl")
 include("reference.jl")
 
-using Statistics, FileIO, Printf, HashStack
+using Statistics, Plots, FileIO, Printf, HashStack
 export seisstack
 
 """
@@ -18,6 +18,8 @@ function seisstack(InputDict::Dict)
 	# # DEBUG
 	#
 
+	if InputDict["compute_reference"] == true
+
 	if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective"
 		compute_reference_xcorr(InputDict)
 		# error("selective reference has a bug in iteration. Currently not available.")
@@ -27,6 +29,7 @@ function seisstack(InputDict::Dict)
 		#error("stackmode is either linear, selective or robust").
 	end
 
+	end
 	#===
 	compute stacking
 	===#
@@ -55,7 +58,7 @@ function seisstack(InputDict::Dict)
     catch
         println("reference not found (if stackmode=linear, please ignore this warning.).\n
 		 		use all potential station from basefile.")
-		error("need to update. Abort")
+	#	error("need to update. Abort")
         reference = false
 
         inFile = jldopen(InputDict["basefiname"]*".jld2", "r")
@@ -175,7 +178,6 @@ function map_stack(InputDict::Dict, station::Tuple)
 	all_full_stnkeywithcha = String[]
 
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
-
 		if stackmode == "selective" || stackmode == "hash"
 			# initialize removal fraction output
 	        rmList = Array{Float64,1}()
@@ -265,7 +267,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 				reference == false && stackmode == "hash"
 				# skip this pair as there is no cc function
 				# or no reference while selective/hash stack
-				println("Reference does not exist. continue.")
+				println("Current trace is empty. continue.")
 				xcorr = CorrData()
 				xcorr.fs = fs
 				xcorr.maxlag = trunc(Int, N_maxlag)
@@ -375,7 +377,6 @@ function map_stack(InputDict::Dict, station::Tuple)
 		return nothing
 	end
 
-
     #===
     Manipulate stacking by unit num per stack
     ===#
@@ -432,30 +433,45 @@ function map_stack(InputDict::Dict, station::Tuple)
         file["xcorr"] = xcorr_all
         file["stackmode"] = stackmode
     end
-
+    
     # dont plot if no cross-correlations were found. This would give div by 0
     if savefig
-        layout = Layout(width=1200, height=800,
-                        xaxis_title="Lags [s]",
-                        yaxis_title="Days since $(timestamplist[1])",
-                        font=PlotlyJS.attr(size=11),
-                        showlegend=false,
-                        title="$stn1.$stn2")
-
-        if tscount==0 println("No cross-correlations to plot. Skip."); end
-        trace = PlotlyJS.heatmap(x=lags, y=timestamp.(xcorr_all.misc["T"]), z=xcorr_all.corr, c=:RdBu)
-        p = PlotlyJS.plot(trace, layout)
-        figdirtemp = split(basefiname, "/")
-        figdir = join(figdirtemp[1:end-2], "/")*"/fig"
-        if !ispath(figdir) mkpath(figdir); end
-        #figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
-        figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
-        ORCA.savefig(p, figname)
-
+        # layout = Layout(width=1200, height=800,
+        #                 xaxis_title="Lags [s]",
+        #                 yaxis_title="Days since $(timestamplist[1])",
+        #                 font=PlotlyJS.attr(size=11),
+        #                 showlegend=false,
+        #                 title="$stn1.$stn2")
+		#
+        # if tscount==0 println("No cross-correlations to plot. Skip."); end
+        # trace = PlotlyJS.heatmap(x=lags, y=timestamp.(xcorr_all.misc["T"]), z=xcorr_all.corr, c=:RdBu)
+        # p = PlotlyJS.Plot(trace, layout)
+        # figdirtemp = split(basefiname, "/")
+        # figdir = join(figdirtemp[1:end-2], "/")*"/fig"
+        # if !ispath(figdir) mkpath(figdir); end
+        # #figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
+        # figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
+		# ORCA.restart_server()
+		# ORCA.savefig(p, figname, format=figfmt)
+		# println("test save data")
+		if tscount==0 println("No cross-correlations to plot. Skip."); end
+		Plots.pyplot()
+		p = Plots.heatmap(lags, timestamp.(xcorr_all.misc["T"]),transpose(xcorr_all.corr), c=:balance)
+		p = plot!(size=(800,600))
+		figdirtemp = split(basefiname, "/")
+		figdir = join(figdirtemp[1:end-2], "/")*"/fig"
+		if !ispath(figdir) mkpath(figdir); end
+		#figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
+		figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
+		println(figname)
+		Plots.savefig(p, figname)
 		# save heatmap matrix for replot
 		figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2).jld2"
 		FileIO.save(figjldname, "heatmap", xcorr_all.corr)
     end
+
+    @show station
+    return nothing
 end
 
 """
