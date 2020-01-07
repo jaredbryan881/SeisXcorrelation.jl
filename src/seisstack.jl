@@ -18,18 +18,21 @@ function seisstack(InputDict::Dict)
 	# # DEBUG
 	#
 
+	InputDict["Nfreqband"] = 10
+
 	if InputDict["compute_reference"] == true
-
-	if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective"
-		compute_reference_xcorr(InputDict)
-		# error("selective reference has a bug in iteration. Currently not available.")
-	elseif InputDict["stackmode"] == "robust" ||  InputDict["stackmode"] == "hash"
-		robust_reference_xcorr(InputDict)
-	else
-		#error("stackmode is either linear, selective or robust").
+		if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective" ||  InputDict["stackmode"] == "hash"
+			compute_reference_xcorr(InputDict)
+			# error("selective reference has a bug in iteration. Currently not available.")
+		elseif InputDict["stackmode"] == "robust"
+			robust_reference_xcorr(InputDict)
+		else
+			#error("stackmode is either linear, selective or robust").
+		end
 	end
 
-	end
+	#DEBUG:
+	return 1
 	#===
 	compute stacking
 	===#
@@ -433,7 +436,7 @@ function map_stack(InputDict::Dict, station::Tuple)
         file["xcorr"] = xcorr_all
         file["stackmode"] = stackmode
     end
-    
+
     # dont plot if no cross-correlations were found. This would give div by 0
     if savefig
         # layout = Layout(width=1200, height=800,
