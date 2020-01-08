@@ -362,30 +362,27 @@ function map_stack(InputDict::Dict, station::Tuple)
 
         close(f_cur)
 
+		# cat to all daily stack xcorr_temp
 
-        norm_factor = maximum(abs.(stacked_ifreq_cc), dims=1)
-
-		if any(iszero.(norm_factor))  #to avoid deviding by zero
-			# this time is filled by zero; fill corr with NaN
-			stacked_ifreq_cc .= NaN
-			wtcorr_reshaped = reshape(stacked_ifreq_cc, Nmaxlag, 1, Nfreqband)
-			#xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
-			xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
-												wtcorr_reshaped, dims=2)
-
-        elseif IsNormalizedampperUnit
-            #xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
-			stacked_ifreq_cc ./= norm_factor
-			wtcorr_reshaped = reshape(stacked_ifreq_cc, Nmaxlag, 1, Nfreqband)
-			xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
-												wtcorr_reshaped, dims=2)
-
-        else
-            #xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
-			wtcorr_reshaped = reshape(stacked_ifreq_cc, Nmaxlag, 1, Nfreqband)
-			xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
-												wtcorr_reshaped, dims=2)
-        end
+		wtcorr_reshaped = zeros(Float32, Nmaxlag, 1,Nfreqband)
+		for ifreq = 1:Nfreqband
+	        norm_factor = maximum(abs.(stacked_ifreq_cc[:, ifreq]), dims=1)
+			if iszero(norm_factor)  #to avoid deviding by zero
+				# this time is filled by zero; fill corr with NaN
+				stacked_ifreq_cc[:, ifreq] .= NaN
+				stacked_tr = stacked_ifreq_cc[:, ifreq]
+				#xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
+	        elseif IsNormalizedampperUnit
+	            #xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
+				stacked_tr = stacked_ifreq_cc[:, ifreq] ./ norm_factor
+	        else
+	            #xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
+				stacked_tr = stacked_ifreq_cc[:, ifreq]
+	        end
+			wtcorr_reshaped[:, 1, ifreq] = reshape(stacked_tr, length(stacked_ifreq_cc[:, ifreq]), 1, 1)
+		end
+		xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
+											wtcorr_reshaped, dims=2)
 
 		push!(all_full_stnkeywithcha, full_stnkeywithcha)
 
