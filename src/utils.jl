@@ -31,12 +31,13 @@ Append wavelet transformed cc functions into CorrData.
 
 # Arguments
 - `C::CorrData`    : CorrData contains raw cc functions
-- `Nfreqband::Int` : Number of frequency band
+- `Nfreqband::Union{Int` : Number of frequency band
 - `dj::Float64`    : Discretization span of frequency. See doc of SeisNoise.cwt
 - `figdir::String` : if !isempty(figdir), output debugging figures to figdir.
 
 """
-function append_wtcorr!(C::CorrData, Nfreqband::Int; dj = 1/12, figdir::String = "")
+function append_wtcorr!(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Array{Float32, 1}};
+						 dj = 1/12, figdir::String = "")
 	# process flow:
 	# 1. compute frequency band
 	# 2. apply wavelet transform
@@ -44,6 +45,12 @@ function append_wtcorr!(C::CorrData, Nfreqband::Int; dj = 1/12, figdir::String =
 	# 4. store to C.misc["wtcorr"]
 
 	T, N = size(C.corr)
+
+	if typeof(freqband) == Int
+		Nfreqband = freqband
+	else
+		Nfreqband = length(freqband)-1
+	end
 
 	# append wtcorr to store all cc functions after cwt
 	C.misc["wtcorr"] = Array{Float32, 3}(undef, T, N, Nfreqband)
@@ -77,10 +84,13 @@ function append_wtcorr!(C::CorrData, Nfreqband::Int; dj = 1/12, figdir::String =
 		# 1. Full reconstruction
 
 		tr_freq_reconstructed = zeros(Float32, T, Nfreqband)
-		#===freqband_linspace===#
-		freqband = range(minimum(freqs), maximum(freqs), length = Nfreqband+1)
-		#===freqband_logspace===#
-		#freqband = logfreqband(minimum(freqs), maximum(freqs), Nfreqband)
+
+		if typeof(freqband) == Int
+			#===freqband_linspace===#
+			freqband = range(minimum(freqs), maximum(freqs), length = Nfreqband+1)
+			#===freqband_logspace===#
+			#freqband = logfreqband(minimum(freqs), maximum(freqs), Nfreqband)
+		end
 
 		for i = 1:Nfreqband
 		   freqbandmin = freqband[i]
@@ -135,8 +145,8 @@ function append_wtcorr!(C::CorrData, Nfreqband::Int; dj = 1/12, figdir::String =
 	end
 
 end
-append_wtcorr(C::CorrData, Nfreqband::Int; dj=1/12, figdir::String = "") = (U =
- deepcopy(C);append_wtcorr!(U, Nfreqband, dj=dj, figdir=figdir);return U)
+append_wtcorr(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Array{Float32, 1}};
+ dj=1/12, figdir::String = "") = (U = deepcopy(C);append_wtcorr!(U, freqband, dj=dj, figdir=figdir);return U)
 
 
 """
@@ -147,29 +157,29 @@ copy corrdata without wtcorr.
 copy_without_wtcorr(C::CorrData) = (@views U = deepcopy(C);
    delete!(U.misc, "wtcorr"); return U)
 
-"""
-	logfreqband(fmin::AbstractFloat, fmax::AbstractFloat, N::Int)
-
-return logalithmically spaced frequency bands used for banding of wavelet transform.
-"""
-function logfreqband(fmin::AbstractFloat, fmax::AbstractFloat, N::Int)
-
-	if fmax <= fmin
-		error("fmax should be larger than fmin.")
-	elseif fmin < 0.0
-		error("fmin should be larger than zero.")
-	elseif fmin == 0.0
-		warning("fmin == 0.0. replaced to 1e-6")
-		fmin = 1e-6
-	end
-
-	x = log10.(range(fmin, stop=fmax, length=N+1))
-	h1 = fmax - fmin
-	h2 = log10(fmax/fmin)
-	h3 = log10(fmax) .- x
-	y = fmax .- (h1 .* h3 ./ h2)
-	# avoid numerical error
-	y[1] = fmin
-	y[end] = fmax
-	return y
-end
+# """
+# 	logfreqband(fmin::AbstractFloat, fmax::AbstractFloat, N::Int)
+#
+# return logalithmically spaced frequency bands used for banding of wavelet transform.
+# """
+# function logfreqband(fmin::AbstractFloat, fmax::AbstractFloat, N::Int)
+#
+# 	if fmax <= fmin
+# 		error("fmax should be larger than fmin.")
+# 	elseif fmin < 0.0
+# 		error("fmin should be larger than zero.")
+# 	elseif fmin == 0.0
+# 		warning("fmin == 0.0. replaced to 1e-6")
+# 		fmin = 1e-6
+# 	end
+#
+# 	x = log10.(range(fmin, stop=fmax, length=N+1))
+# 	h1 = fmax - fmin
+# 	h2 = log10(fmax/fmin)
+# 	h3 = log10(fmax) .- x
+# 	y = fmax .- (h1 .* h3 ./ h2)
+# 	# avoid numerical error
+# 	y[1] = fmin
+# 	y[end] = fmax
+# 	return y
+# end

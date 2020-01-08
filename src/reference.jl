@@ -17,7 +17,9 @@ function compute_reference_xcorr(InputDict::Dict)
     4. save final reference dict
     ===#
 
-    Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+	Output_rootdir = InputDict["Output_rootdir"] #.../OUTPUT
+	if !ispath(Output_rootdir) mkdir(Output_rootdir); end
+
 	refYear = split(InputDict["basefiname"],"/")[end-2]
 	refname = Output_rootdir*"/reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
 
@@ -32,7 +34,14 @@ function compute_reference_xcorr(InputDict::Dict)
 
 	# 1. make initial reference by linear stack
 	ref_dict_dailystack = Dict()
-	Nfreqband = Int(InputDict["Nfreqband"])
+
+	freqband = InputDict["freqband"]
+
+	if typeof(freqband) == Int
+		Nfreqband = freqband
+	else
+		Nfreqband = length(freqband)-1
+	end
 
 	for year = ref_styear:ref_etyear
 
@@ -235,7 +244,14 @@ Stack all cross-correlation functions for all given station pairs to generate a 
 """
 function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackmode::String="linear", reference::String="")
 
-	Nfreqband = Int(InputDict["Nfreqband"])
+
+	freqband = InputDict["freqband"]
+
+	if typeof(freqband) == Int
+		Nfreqband = freqband
+	else
+		Nfreqband = length(freqband)-1
+	end
 
 	# hold reference xcorrs in memory and write all at once
 	ref_dict = Dict()
@@ -282,7 +298,7 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 			#figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
 
 			figdir = ""
-			append_wtcorr!(xcorr, Nfreqband, figdir=figdir)
+			append_wtcorr!(xcorr, freqband, figdir=figdir)
 
 			# load reference
 			if stackmode=="selective"
@@ -403,7 +419,14 @@ function robust_reference_xcorr(InputDict::Dict)
 
 	# collect all references into one dictionary at first iteration
 	ref_dict_dailystack = Dict()
-	Nfreqband = Int(InputDict["Nfreqband"])
+
+	freqband = InputDict["freqband"]
+
+	if typeof(freqband) == Int
+		Nfreqband = freqband
+	else
+		Nfreqband = length(freqband)-1
+	end
 
 	for year = ref_styear:ref_etyear
 
@@ -507,7 +530,13 @@ Robust stack cross-correlation functions for all given station pairs to generate
 """
 function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 
-	Nfreqband = Int(InputDict["Nfreqband"])
+	freqband = InputDict["Nfreqband"]
+
+	if typeof(freqband) == Int
+		Nfreqband = freqband
+	else
+		Nfreqband = length(freqband)-1
+	end
 
     # hold reference xcorrs in memory and write all at once
 	ref_dict = Dict()
@@ -565,7 +594,7 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 
 
 
-			append_wtcorr!(xcorr, Nfreqband, figdir=figdir)
+			append_wtcorr!(xcorr, freqband, figdir=figdir)
 
 
 			# @show any(isnan.(xcorr.corr), dims=1)
@@ -589,7 +618,7 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 					# initiate ref_dict metadata
 					ref_dict[pair] = deepcopy(xcorr_ifreq)
 				end
-				
+
 				# if there is no selected stack, skip this pair at this time
 				if isempty(xcorr_ifreq.corr) || all(isnan.(xcorr_ifreq.corr)) continue; end
 

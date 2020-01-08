@@ -37,7 +37,9 @@ function seisstack(InputDict::Dict)
     # compute stack in all station pairs by keys(ref)
 	# if there is no reference, evaluate from InputDict["basefiname"]*".jld2"
 
-	Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+	Output_rootdir = InputDict["Output_rootdir"] #.../OUTPUT
+	if !ispath(Output_rootdir) mkdir(Output_rootdir); end
+
 	Year = split(InputDict["basefiname"],"/")[end-2]
 
 	reference = Output_rootdir*"/reference_xcorr_for$(Year).jld2" # this is fixed in the SeisXcorrelation/pstack.
@@ -115,7 +117,13 @@ function map_stack(InputDict::Dict, station::Tuple)
     maxlag     = InputDict["maxlag"]
     metric     = InputDict["metric"]
     threshold  = InputDict["threshold"]
-    Nfreqband  = InputDict["Nfreqband"]
+	freqband   = InputDict["freqband"]
+
+	if typeof(freqband) == Int
+		Nfreqband = freqband
+	else
+		Nfreqband = length(freqband)-1
+	end
 
     Nmaxlag    = trunc(Int, 2*fs*maxlag + 1)
 
@@ -166,7 +174,7 @@ function map_stack(InputDict::Dict, station::Tuple)
     lags = -maxlag:1/fs:maxlag
 
 	#save metadata
-	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, Nmaxlag, Nfreqband,
+	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, Nmaxlag, freqband,
 							filter, stnpair, stnpairrev)
 
 	if typeof(xcorr_temp) != CorrData
@@ -267,7 +275,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 				xcorr.freqmax = InputDict["filter"][2]
 			end
 
-			append_wtcorr!(xcorr, Nfreqband)
+			append_wtcorr!(xcorr, freqband)
 
 			# stack shotttime-window cc per unit time
 			for ifreq = 1:Nfreqband
@@ -391,6 +399,8 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 			if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 				fname_out = join([time, stnpair, "selectiveremovalfraction","dat"], '.')
+			else
+				continue;
 			end
 
 			# y, jd = parse.(Int64, split(time, ".")[1:2])
@@ -551,9 +561,16 @@ get metadata from available cc jld2.
 """
 
 function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String, Nmaxlag::Int,
-	 	Nfreqband::Int, filter::Union{Bool, AbstractArray}, stnpair::String, stnpairrev::String)
+	 	freqband::Union{Int, Array{Float64, 1}, Array{Float32, 1}}, filter::Union{Bool, AbstractArray},
+		stnpair::String, stnpairrev::String)
 
 	xcorr_temp = CorrData()
+
+	if typeof(freqband) == Int
+		Nfreqband = freqband
+	else
+		Nfreqband = length(freqband)-1
+	end
 
 	breakflag=false
 	for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
@@ -604,7 +621,7 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 				xcorr.freqmax = filter[2]
 			end
 
-			append_wtcorr!(xcorr, Nfreqband)
+			append_wtcorr!(xcorr, freqband)
 
 			xcorr_temp = copy_without_wtcorr(xcorr)
 			xcorr_temp.corr = Array{Float32, 2}(undef, Nmaxlag, 0)
