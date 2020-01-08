@@ -197,7 +197,7 @@ function compute_reference_xcorr(InputDict::Dict)
 			for ifreq = 1:Nfreqband
 
 				xcorr_ifreq.corr = ref_dict_dailystack[stnpair].misc["wtcorr"][:,:,ifreq]
-				ref_ifreq.corr = ref.misc["wtcorr"][:,1,ifreq]
+				ref_ifreq.corr = reshape(ref_old.corr[:,ifreq], length(ref_old.corr[:,ifreq]), 1)
 
 				xcorr_ifreq = selective_stack(xcorr_ifreq, ref_ifreq, InputDict)[1]
 
@@ -271,14 +271,17 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 			if isempty(xcorr.corr) continue; end
 
 			if InputDict["filter"] !=false
-				xcorr = bandpass(xcorr.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
+				bandpass!(xcorr.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
+				xcorr.freqmin = InputDict["filter"][1]
+				xcorr.freqmax = InputDict["filter"][2]
 			end
 
 			# apply wavelet transform to C.corr and append it as 3D Array c.misc["wtcorr"]
 			basefiname = InputDict["basefiname"]
 			figdirtemp = split(basefiname, "/")
-			figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
+			#figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
 
+			figdir = ""
 			append_wtcorr!(xcorr, Nfreqband, figdir=figdir)
 
 			# load reference
@@ -298,6 +301,7 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 						f_exref[nochan_stnpair]
 					  catch
 							try
+								println("reversed station pair found.")
 								f_exref[nochan_stnpairrev]
 							catch
 								println("debug: add new from second with linear.")
@@ -308,16 +312,19 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 				close(f_exref)
 
 				if InputDict["filter"] !=false
-					ref  = bandpass(ref.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
+					bandpass!(ref.corr, InputDict["filter"][1], InputDict["filter"][2], ref.fs, corners=4, zerophase=false)
+					ref.freqmin = InputDict["filter"][1]
+					ref.freqmax = InputDict["filter"][2]
 				end
 
-				figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtref"
-				append_wtcorr!(ref, Nfreqband)
+				if nochan_stnpairrev ∈ keys(f_exref)
+					ref.corr = reverse(ref.corr, dims=1)
+				end
 
 			end
 
 			# stack them and add to ref_dict.corr
-			stacked_ifreq_cc = Array{Float32, 2}(undef, size(xcorr.corr, 1), Nfreqband)
+			stacked_ifreq_cc = zeros(Float32, size(xcorr.corr, 1), Nfreqband)
 
 			for ifreq = 1:Nfreqband
 				xcorr_ifreq = copy_without_wtcorr(xcorr)
@@ -328,8 +335,8 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 					stack!(xcorr_ifreq, allstack=true)
 
 				elseif stackmode=="selective"
-					ref_ifreq.corr = ref.misc["wtcorr"][:,1,ifreq]
 					ref_ifreq = copy_without_wtcorr(ref)
+					ref_ifreq.corr = reshape(ref.corr[:,ifreq], length(ref.corr[:,ifreq]), 1)
 
 		            xcorr_ifreq, rmList = selective_stack(xcorr_ifreq, ref_ifreq, InputDict)
 
@@ -337,15 +344,16 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 					error("stack mode $(stackmode) not defined.")
 		        end
 
-				stacked_ifreq_cc[:, ifreq] = xcorr_ifreq.corr
-
-				# if there is no selected stack, skip this pair at this time
-				if isempty(xcorr_ifreq.corr) || all(isnan.(xcorr_ifreq.corr)) continue; end
 
 				if ifreq == 1
 					# initiate ref_dict metadata
 					ref_dict[pair] = deepcopy(xcorr_ifreq)
 				end
+
+				# if there is no selected stack, skip this pair at this time
+				if isempty(xcorr_ifreq.corr) || all(isnan.(xcorr_ifreq.corr)) continue; end
+				stacked_ifreq_cc[:, ifreq] = xcorr_ifreq.corr
+
 			end
 
 
@@ -541,7 +549,9 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 			end
 
 			if InputDict["filter"] !=false
-				xcorr = bandpass(xcorr.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
+				bandpass(xcorr.corr, InputDict["filter"][1], InputDict["filter"][2], xcorr.fs, corners=4, zerophase=false)
+				xcorr.freqmin = InputDict["filter"][1]
+				xcorr.freqmax = InputDict["filter"][2]
 			end
 
 			# nancols = any(isnan.(xcorr.corr), dims=1)
@@ -550,7 +560,10 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 			# apply wavelet transform to C.corr and append it as 3D Array c.misc["wtcorr"]
 			basefiname = InputDict["basefiname"]
 			figdirtemp = split(basefiname, "/")
-			figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
+			#figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
+			figdir = ""
+
+
 
 			append_wtcorr!(xcorr, Nfreqband, figdir=figdir)
 
@@ -572,13 +585,15 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 
 				stacked_ifreq_cc[:, ifreq] = xcorr_ifreq.corr
 
-				# if there is no selected stack, skip this pair at this time
-				if isempty(xcorr_ifreq.corr) || all(isnan.(xcorr_ifreq.corr)) continue; end
-
 				if ifreq == 1
 					# initiate ref_dict metadata
 					ref_dict[pair] = deepcopy(xcorr_ifreq)
 				end
+				
+				# if there is no selected stack, skip this pair at this time
+				if isempty(xcorr_ifreq.corr) || all(isnan.(xcorr_ifreq.corr)) continue; end
+
+
 			end
 
 			ref_dict[pair].corr = stacked_ifreq_cc

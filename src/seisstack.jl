@@ -15,10 +15,6 @@ function seisstack(InputDict::Dict)
 	# #===
 	# compute reference
 	# ===#
-	# # DEBUG
-	#
-
-	InputDict["Nfreqband"] = 10
 
 	if InputDict["compute_reference"] == true
 		if InputDict["stackmode"] == "linear" || InputDict["stackmode"] == "selective" ||  InputDict["stackmode"] == "hash"
@@ -32,7 +28,7 @@ function seisstack(InputDict::Dict)
 	end
 
 	#DEBUG:
-	return 1
+	#return 1
 	#===
 	compute stacking
 	===#
@@ -119,8 +115,9 @@ function map_stack(InputDict::Dict, station::Tuple)
     maxlag     = InputDict["maxlag"]
     metric     = InputDict["metric"]
     threshold  = InputDict["threshold"]
+    Nfreqband  = InputDict["Nfreqband"]
 
-    N_maxlag    = trunc(Int, 2*fs*maxlag + 1)
+    Nmaxlag    = trunc(Int, 2*fs*maxlag + 1)
 
     if !haskey(InputDict, "filter")
         filter = false
@@ -169,7 +166,8 @@ function map_stack(InputDict::Dict, station::Tuple)
     lags = -maxlag:1/fs:maxlag
 
 	#save metadata
-	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, N_maxlag, stnpair, stnpairrev)
+	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, Nmaxlag, Nfreqband,
+							filter, stnpair, stnpairrev)
 
 	if typeof(xcorr_temp) != CorrData
 		# no data available with this stnpair
@@ -183,7 +181,8 @@ function map_stack(InputDict::Dict, station::Tuple)
     for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
 		if stackmode == "selective" || stackmode == "hash"
 			# initialize removal fraction output
-	        rmList = Array{Float64,1}()
+	        rmList = zeros(Float64, Nfreqband)
+			rmList .= NaN
 	    end
 
         f_cur = jldopen(basefiname*".$time.jld2")
@@ -197,6 +196,8 @@ function map_stack(InputDict::Dict, station::Tuple)
 			cur_comp = comp
 			push!(nochan_stnkeys, cur_stn1*"-"*cur_stn2*"-"*cur_comp)
 		end
+
+		stacked_ifreq_cc = zeros(Float32, Nmaxlag, Nfreqband)
 
 		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 
@@ -234,9 +235,10 @@ function map_stack(InputDict::Dict, station::Tuple)
 				end
                 close(f_ref)
 
-                if filter == true
-                    xcorr.corr = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
-                    ref.corr   = bandpass(ref.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+				if filter != false && reference != false
+					ref.corr    = bandpass(ref.corr, filter[1], filter[2], ref.fs, corners=4, zerophase=false)
+					ref.freqmin = InputDict["filter"][1]
+					ref.freqmax = InputDict["filter"][2]
 				end
 
             else
@@ -252,98 +254,129 @@ function map_stack(InputDict::Dict, station::Tuple)
                 xcorr = f_cur["$time/$fullstnpair"]
 				full_stnkeywithcha = fullstnpair
 
-
-                if filter == true
-                    xcorr.corr = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
-                end
             end
 
-            nWins = length(xcorr.corr[1,:])
+			nWins = length(xcorr.corr[1,:])
 
 			xcorr.corr , nanzerocol = remove_nanandzerocol(xcorr.corr)
 			xcorr.t = xcorr.t[nanzerocol]
+			if isempty(xcorr.corr) continue; end
+			if filter != false
+				xcorr.corr    = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+				xcorr.freqmin = InputDict["filter"][1]
+				xcorr.freqmax = InputDict["filter"][2]
+			end
+
+			append_wtcorr!(xcorr, Nfreqband)
 
 			# stack shotttime-window cc per unit time
+			for ifreq = 1:Nfreqband
+				xcorr_ifreq = copy_without_wtcorr(xcorr)
+				xcorr_ifreq.corr = xcorr.misc["wtcorr"][:,:,ifreq]
 
-			if isempty(xcorr.corr) ||
-				reference == false && stackmode == "selective" ||
-				reference == false && stackmode == "hash"
-				# skip this pair as there is no cc function
-				# or no reference while selective/hash stack
-				println("Current trace is empty. continue.")
-				xcorr = CorrData()
-				xcorr.fs = fs
-				xcorr.maxlag = trunc(Int, N_maxlag)
-				xcorr.corr = zeros(trunc(Int, N_maxlag),1)
-				full_stnkeywithcha = ""
+				if reference != false
+					ref_ifreq = copy_without_wtcorr(ref)
+					ref_ifreq.corr = reshape(ref.corr[:,ifreq], Nmaxlag, 1)
+				end
 
-			# switch the stacking method
-			elseif stackmode == "linear"
 
-				stack!(xcorr, allstack=true)
+				if isempty(xcorr.corr) ||
+					reference == false && stackmode == "selective" ||
+					reference == false && stackmode == "hash"
+					# skip this pair as there is no cc function
+					# or no reference while selective/hash stack
+					println("Current trace is empty. continue.")
+					xcorr = CorrData()
+					xcorr.fs = fs
+					xcorr.maxlag = trunc(Int, Nmaxlag)
+					xcorr.corr = zeros(trunc(Int, Nmaxlag),1)
+					full_stnkeywithcha = ""
 
-            elseif stackmode == "selective"
+				# switch the stacking method
+				elseif stackmode == "linear"
 
-				xcorr, ccList = selective_stack(xcorr, ref, InputDict)
-				nRem = length(findall(x->(x<threshold), ccList))
-				push!(rmList, nRem / nWins)
+					stack!(xcorr_ifreq, allstack=true)
 
-			elseif stackmode == "robust"
+	            elseif stackmode == "selective"
 
-				robuststack!(xcorr)
+					xcorr_ifreq, ccList = selective_stack(xcorr_ifreq, ref_ifreq, InputDict)
+					nRem = length(findall(x->(x<threshold), ccList))
+					rmList[ifreq] = nRem /  nWins
 
-			elseif stackmode == "hash"
+				elseif stackmode == "robust"
 
-				# @show xcorr.corr[200:400, 1]
-				# @show ref.corr[200:400, 1]
+					robuststack!(xcorr_ifreq)
 
-				statsdir = InputDict["fodir"]*"/../hashstack_stats"
-		        if !ispath(statsdir) mkpath(statsdir); end
+				elseif stackmode == "hash"
 
-				hashstack!(xcorr, ref,
-					max_num_substack 		= 1e3,
-					cc_substack_threshold 	= 0.3,
-					SNR_threshold 			= 0.0,
-					output_stats = true, # if output status hdf5 file to check the process
-					output_stats_dir = statsdir, # directory of output status hdf5 file to check the process
-					)
+					# @show xcorr.corr[200:400, 1]
+					# @show ref.corr[200:400, 1]
 
-				cc_coef = cor(xcorr.corr, ref.corr)
-				@show cc_coef
+					statsdir = InputDict["fodir"]*"/../hashstack_stats"
+			        if !ispath(statsdir) mkpath(statsdir); end
 
-			else
-				error("stack mode $stackmode does not exist.")
+					hashstack!(xcorr_ifreq, ref_ifreq,
+						max_num_substack 		= 1e3,
+						cc_substack_threshold 	= 0.3,
+						SNR_threshold 			= 0.0,
+						output_stats = true, # if output status hdf5 file to check the process
+						output_stats_dir = statsdir, # directory of output status hdf5 file to check the process
+						)
 
-            end
+					cc_coef = cor(xcorr_ifreq.corr, ref_ifreq.corr)
+					@show cc_coef
 
-            if stnpairrev ∈ nochan_stnkeys
-                xcorr.corr = reverse(xcorr.corr, dims=1)
-            end
+				else
+					error("stack mode $stackmode does not exist.")
+	            end
 
-            tscount += 1
+				if stnpairrev ∈ nochan_stnkeys
+	                xcorr_ifreq.corr = reverse(xcorr_ifreq.corr, dims=1)
+	            end
+				# if there is no selected stack, skip this pair at this time
+				if isempty(xcorr_ifreq.corr) || all(isnan.(xcorr_ifreq.corr)) continue; end
+
+				stacked_ifreq_cc[:, ifreq] = xcorr_ifreq.corr
+
+			end
+
+			tscount += 1
 
         else
             # this station pair does not exist in this time stamp
-            xcorr = CorrData()
-            xcorr.fs = fs
-            xcorr.maxlag = trunc(Int, N_maxlag)
-            xcorr.corr = zeros(trunc(Int, N_maxlag),1)
+            # xcorr = CorrData()
+            # xcorr.fs = fs
+            # xcorr.maxlag = trunc(Int, Nmaxlag)
+            # xcorr.corr = zeros(trunc(Int, Nmaxlag),1)
+			stacked_ifreq_cc .= NaN
 			full_stnkeywithcha = ""
         end
 
         close(f_cur)
 
-        norm_factor = maximum(abs.(xcorr.corr[:, 1]))
 
-		if iszero(norm_factor)
+        norm_factor = maximum(abs.(stacked_ifreq_cc), dims=1)
+
+		if any(iszero.(norm_factor))  #to avoid deviding by zero
 			# this time is filled by zero; fill corr with NaN
-			xcorr.corr .= NaN
-			xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
+			stacked_ifreq_cc .= NaN
+			wtcorr_reshaped = reshape(stacked_ifreq_cc, Nmaxlag, 1, Nfreqband)
+			#xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
+			xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
+												wtcorr_reshaped, dims=2)
 
-        elseif IsNormalizedampperUnit && !iszero(norm_factor) #to avoid deviding by zero
-            xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
+        elseif IsNormalizedampperUnit
+            #xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
+			stacked_ifreq_cc ./= norm_factor
+			wtcorr_reshaped = reshape(stacked_ifreq_cc, Nmaxlag, 1, Nfreqband)
+			xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
+												wtcorr_reshaped, dims=2)
+
         else
-            xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
+            #xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
+			wtcorr_reshaped = reshape(stacked_ifreq_cc, Nmaxlag, 1, Nfreqband)
+			xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
+												wtcorr_reshaped, dims=2)
         end
 
 		push!(all_full_stnkeywithcha, full_stnkeywithcha)
@@ -352,14 +385,12 @@ function map_stack(InputDict::Dict, station::Tuple)
 		if (stackmode == "selective") && InputDict["IsOutputRemovalFrac"]
 			#output removal fraction on this channel
 			#println(rmList)
-			if isempty(rmList)
-				rmList = [NaN]
-			end
+			# if isempty(rmList)
+			# 	rmList .= NaN
+			# end
 
-			if stnpair ∈ nochan_stnkeys
+			if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 				fname_out = join([time, stnpair, "selectiveremovalfraction","dat"], '.')
-			else
-				fname_out = join([time, stnpairrev, "selectiveremovalfraction","dat"], '.')
 			end
 
 			# y, jd = parse.(Int64, split(time, ".")[1:2])
@@ -369,10 +400,15 @@ function map_stack(InputDict::Dict, station::Tuple)
 			mkpath(fodir)
 			fopath = fodir*"/"*fname_out
 			open(fopath, "w") do io
-			   write(io, @sprintf("%f\n", rmList[1]))
+				for ii = 1:Nfreqband-1
+					write(io, @sprintf("%f, ", rmList[ii]))
+				end
+				write(io, @sprintf("%f", rmList[Nfreqband]))
 			end
 		end
     end
+
+
 
 	if tscount == 0
 		#no data for this station pair
@@ -385,7 +421,7 @@ function map_stack(InputDict::Dict, station::Tuple)
     ===#
 
     xcorr_all = deepcopy(xcorr_temp)
-    xcorr_all.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
+    xcorr_all.misc["wtcorr"] = Array{Float32, 3}(undef, trunc(Int, Nmaxlag), 0, Nfreqband)
 
     if unitnumperstack <= overlapperstack
         error("unitnumperstack should be larger than overlapperstack.")
@@ -393,31 +429,36 @@ function map_stack(InputDict::Dict, station::Tuple)
 
     T = []
     icount=1
-    while icount <= length(xcorr_temp.corr[1, :])-unitnumperstack+1
+    while icount <= length(xcorr_temp.misc["wtcorr"][1, :, 1])-unitnumperstack+1
 
         it = icount
         et = icount + unitnumperstack - 1
 
-        xcorrstack = zeros(N_maxlag)
-
         # stack over unitnumperstack
-		Nstack = 0
-        for ind = it:et
-			if !any(isnan.(xcorr_temp.corr[:, ind])) && !all(iszero.(xcorr_temp.corr[:, ind]))
-				xcorrstack .+= xcorr_temp.corr[:,ind]
-				Nstack += 1
+		manup_ifreq_cc = zeros(Float32, Nmaxlag, Nfreqband)
 
-           	else
-			   	#println("Nan or all zero found in corr. skip this unit time")
-	   		end
-        end
-        #xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack)
-		if Nstack == 0
-			# This day ther is no stacked cc. fill NAN
-			xcorr_all.corr = hcat(xcorr_all.corr, zeros(N_maxlag, 1) .* NaN)
-        else
-			xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack ./ Nstack)
+		for ifreq = 1:Nfreqband
+			xcorrstack = zeros(Nmaxlag)
+			Nstack = 0
+	        for ind = it:et
+				if !any(isnan.(xcorr_temp.misc["wtcorr"][:, ind, ifreq])) && !all(iszero.(xcorr_temp.misc["wtcorr"][:, ind, ifreq]))
+					xcorrstack .+= xcorr_temp.misc["wtcorr"][:, ind, ifreq]
+					Nstack += 1
+	           	else
+				   	#println("Nan or all zero found in corr. skip this unit time")
+		   		end
+	        end
+
+			if Nstack == 0
+				manup_ifreq_cc[:, ifreq] = zeros(Nmaxlag, 1).*NaN
+			else
+				manup_ifreq_cc[:, ifreq] = xcorrstack ./ Nstack
+			end
 		end
+
+		manupcorr_reshaped = reshape(manup_ifreq_cc, Nmaxlag, 1, Nfreqband)
+		xcorr_all.misc["wtcorr"] = cat(xcorr_all.misc["wtcorr"], manupcorr_reshaped, dims=2)
+        #xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack)
 
         t1 = timestamplist[it]
         t2 = timestamplist[et]
@@ -427,7 +468,7 @@ function map_stack(InputDict::Dict, station::Tuple)
         icount += unitnumperstack - overlapperstack
     end
 
-    xcorr_all.misc["T"] = T
+	xcorr_all.misc["T"] = T
 	xcorr_all.misc["channelpair"] = all_full_stnkeywithcha
 
     # save xcorr
@@ -459,18 +500,29 @@ function map_stack(InputDict::Dict, station::Tuple)
 		# println("test save data")
 		if tscount==0 println("No cross-correlations to plot. Skip."); end
 		Plots.pyplot()
-		p = Plots.heatmap(lags, timestamp.(xcorr_all.misc["T"]),transpose(xcorr_all.corr), c=:balance)
-		p = plot!(size=(800,600))
-		figdirtemp = split(basefiname, "/")
-		figdir = join(figdirtemp[1:end-2], "/")*"/fig"
-		if !ispath(figdir) mkpath(figdir); end
-		#figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
-		figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)."*figfmt
-		println(figname)
-		Plots.savefig(p, figname)
-		# save heatmap matrix for replot
-		figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2).jld2"
-		FileIO.save(figjldname, "heatmap", xcorr_all.corr)
+
+		for ifreq = 1:Nfreqband
+			freqbandmin = xcorr_all.misc["freqband"][ifreq]
+			freqbandmax = xcorr_all.misc["freqband"][ifreq+1]
+
+			xcorrplot = xcorr_all.misc["wtcorr"][:,:,ifreq]
+			p = Plots.heatmap(lags, timestamp.(xcorr_all.misc["T"]),transpose(xcorrplot), c=:balance)
+			p = Plots.plot!(size=(800,600),
+					  title=@sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2)),
+					  xlabel = "Time lag [s]")
+
+			figdirtemp = split(basefiname, "/")
+			figdir = join(figdirtemp[1:end-2], "/")*"/fig"
+			if !ispath(figdir) mkpath(figdir); end
+			#figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
+			strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
+			figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-"*strfreq*"."*figfmt
+			println(figname)
+			Plots.savefig(p, figname)
+			# save heatmap matrix for replot
+			figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-"*strfreq*".jld2"
+			FileIO.save(figjldname, Dict("heatmap" => xcorrplot, "T" => xcorr_all.misc["T"]))
+		end
     end
 
     @show station
@@ -494,12 +546,12 @@ end
 
 
 """
-get_metadata(timestamplist::Array, timeslice::Array, basename::String, N_maxlag::Int)
+get_metadata(timestamplist::Array, timeslice::Array, basename::String, Nmaxlag::Int)
 get metadata from available cc jld2.
 """
 
-function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String, N_maxlag::Int,
-	 	stnpair::String, stnpairrev::String)
+function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String, Nmaxlag::Int,
+	 	Nfreqband::Int, filter::Union{Bool, AbstractArray}, stnpair::String, stnpairrev::String)
 
 	xcorr_temp = CorrData()
 
@@ -542,9 +594,21 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 				xcorr = f_cur["$time/$fullstnpair"]
 			end
 			# store meta data to xcorr_temp
-			xcorr_temp = deepcopy(xcorr)
-			xcorr_temp.corr = Array{Float32, 2}(undef, trunc(Int, N_maxlag), 0)
+			xcorr.corr , nanzerocol = remove_nanandzerocol(xcorr.corr)
+			xcorr.t = xcorr.t[nanzerocol]
 
+			if isempty(xcorr.corr) continue; end
+			if filter != false
+				xcorr.corr    = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
+				xcorr.freqmin = filter[1]
+				xcorr.freqmax = filter[2]
+			end
+
+			append_wtcorr!(xcorr, Nfreqband)
+
+			xcorr_temp = copy_without_wtcorr(xcorr)
+			xcorr_temp.corr = Array{Float32, 2}(undef, Nmaxlag, 0)
+			xcorr_temp.misc["wtcorr"] = Array{Float32, 3}(undef, Nmaxlag, 0, Nfreqband)
 			return xcorr_temp
 		end
 	end

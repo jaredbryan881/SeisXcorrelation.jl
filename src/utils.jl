@@ -90,6 +90,8 @@ function append_wtcorr!(C::CorrData, Nfreqband::Int; dj = 1/12, figdir::String =
 		      inv_W = SeisNoise.icwt(W[:,ind],sj[ind],dt, dj=dj)
 		      if any(isnan.(inv_W))
 				 println("nan found in icwt.")
+				 # println(tr)
+				 # println(tr_freq_reconstructed)
 		         println(inv_W)
 		      end
 		      tr_freq_reconstructed[:, i] .+= inv_W
@@ -105,7 +107,8 @@ function append_wtcorr!(C::CorrData, Nfreqband::Int; dj = 1/12, figdir::String =
 
 			   # normalize
 			   norm_amp = maximum(abs.(tr_freq_reconstructed[:, i]))
-			   Plots.plot!(tvec, 2*(i-1) .+ tr_freq_reconstructed[:, i] ./ norm_amp, label=@sprintf("%4.2f-%4.2f", freqbandmin, freqbandmax))
+			   Plots.plot!(tvec, 2*(i-1) .+ tr_freq_reconstructed[:, i] ./ norm_amp,
+			    label=@sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2)))
 			end
 			#plot full reconstruct
 			norm_amp_tr = maximum(abs.(tr))
