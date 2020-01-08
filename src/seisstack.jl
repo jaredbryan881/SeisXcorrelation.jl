@@ -391,6 +391,8 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 			if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 				fname_out = join([time, stnpair, "selectiveremovalfraction","dat"], '.')
+			else
+				continue;
 			end
 
 			# y, jd = parse.(Int64, split(time, ".")[1:2])
