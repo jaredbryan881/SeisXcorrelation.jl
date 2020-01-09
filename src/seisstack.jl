@@ -326,7 +326,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 					# @show xcorr.corr[200:400, 1]
 					# @show ref.corr[200:400, 1]
 
-					statsdir = InputDict["fodir"]*"/../hashstack_stats"
+					statsdir = InputDict["Output_dir"]+"/hashstack_stats"
 			        if !ispath(statsdir) mkpath(statsdir); end
 
 					hashstack!(xcorr_ifreq, ref_ifreq,
@@ -410,7 +410,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 			# tstamp_fname = replace(tstamp, ":" => "-")
 			# fodirtemp = split(basefiname, "/")
 			# fodir = join(fodirtemp[1:end-2], "/")*"/selectiveremoval_fraction"
-			fodir = InputDict["fodir"]*"/../hashstack_stats"
+			fodir = InputDict["Output_dir"]*"/removal_fraction"
 			mkpath(fodir)
 			fopath = fodir*"/"*fname_out
 			open(fopath, "w") do io
@@ -527,7 +527,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 			# figdirtemp = split(basefiname, "/")
 			# figdir = join(figdirtemp[1:end-2], "/")*"/fig"
-			fifdir = InputDict["fodir"]*"/../fig"
+			figdir = InputDict["Output_dir"]*"/fig"
 			if !ispath(figdir) mkpath(figdir); end
 			#figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
 			strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
