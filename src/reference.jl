@@ -536,7 +536,7 @@ Robust stack cross-correlation functions for all given station pairs to generate
 """
 function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 
-	freqband = InputDict["Nfreqband"]
+	freqband = InputDict["freqband"]
 
 	if typeof(freqband) == Int
 		Nfreqband = freqband
