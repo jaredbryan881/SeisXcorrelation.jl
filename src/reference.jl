@@ -17,11 +17,13 @@ function compute_reference_xcorr(InputDict::Dict)
     4. save final reference dict
     ===#
 
-	Output_rootdir = InputDict["Output_rootdir"] #.../OUTPUT
-	if !ispath(Output_rootdir) mkdir(Output_rootdir); end
+	Input_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+
+	Output_dir = InputDict["Output_dir"] #.../OUTPUT
+	mkpath(Output_dir)
 
 	refYear = split(InputDict["basefiname"],"/")[end-2]
-	refname = Output_rootdir*"/reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
+	refname = Output_dir*"/../reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
 
 	ref_dict_out = Dict()
 
@@ -45,7 +47,7 @@ function compute_reference_xcorr(InputDict::Dict)
 
 	for year = ref_styear:ref_etyear
 
-		corrname  = Output_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
+		corrname  = Input_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
 		f = jldopen(corrname*".jld2");
 		tslist = f["info/timestamplist"] # base xcorr file
 		close(f)
@@ -137,7 +139,7 @@ function compute_reference_xcorr(InputDict::Dict)
 
 		for year = ref_styear:ref_etyear
 
-			corrname  = Output_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
+			corrname  = Input_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
 			f = jldopen(corrname*".jld2");
 			tslist = f["info/timestamplist"] # base xcorr file
 			close(f)
@@ -191,7 +193,7 @@ function compute_reference_xcorr(InputDict::Dict)
 		# update flowchart:
 		# 1. change current reference name to be 'old'
 
-		oldrefname = Output_rootdir*"/old_reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
+		oldrefname = Output_dir*"/../old_reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
 		mv(refname, oldrefname, force=true)
 		ref_in = jldopen(oldrefname, "r")
 		f_out = jldopen(refname, "w")
@@ -293,10 +295,10 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 			end
 
 			# apply wavelet transform to C.corr and append it as 3D Array c.misc["wtcorr"]
-			basefiname = InputDict["basefiname"]
-			figdirtemp = split(basefiname, "/")
+			# basefiname = InputDict["basefiname"]
+			# figdirtemp = split(basefiname, "/")
 			#figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
-
+			#figdir = InputDict["Output_dir"]
 			figdir = ""
 			append_wtcorr!(xcorr, freqband, figdir=figdir)
 
@@ -405,9 +407,13 @@ function robust_reference_xcorr(InputDict::Dict)
     4. save final reference dict
     ===#
 
-    Output_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+	Input_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+
+	Output_dir = InputDict["Output_dir"] #.../OUTPUT
+	if !ispath(Output_dir) mkpath(Output_dir); end
+
 	refYear = split(InputDict["basefiname"],"/")[end-2]
-	refname = Output_rootdir*"/reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
+	refname = Output_dir*"/../reference_xcorr_for$(refYear).jld2" # this is fixed in the SeisXcorrelation/pstack.
 
 	ref_dict_out = Dict() # this contains {"stationpair" => CorrData}
 
@@ -430,7 +436,7 @@ function robust_reference_xcorr(InputDict::Dict)
 
 	for year = ref_styear:ref_etyear
 
-		corrname  = Output_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
+		corrname  = Input_rootdir*"/$(year)"*"/cc/$(year)_xcorrs"
 		f = jldopen(corrname*".jld2");
 		tslist = f["info/timestamplist"] # base xcorr file
 		close(f)
@@ -590,12 +596,10 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 			basefiname = InputDict["basefiname"]
 			figdirtemp = split(basefiname, "/")
 			#figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
+			#figdir = InputDict["Output_dir"]
 			figdir = ""
 
-
-
 			append_wtcorr!(xcorr, freqband, figdir=figdir)
-
 
 			# @show any(isnan.(xcorr.corr), dims=1)
 			# debugxcorr = deepcopy(xcorr)

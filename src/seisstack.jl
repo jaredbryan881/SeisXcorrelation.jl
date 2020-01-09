@@ -37,12 +37,14 @@ function seisstack(InputDict::Dict)
     # compute stack in all station pairs by keys(ref)
 	# if there is no reference, evaluate from InputDict["basefiname"]*".jld2"
 
-	Output_rootdir = InputDict["Output_rootdir"] #.../OUTPUT
-	if !ispath(Output_rootdir) mkdir(Output_rootdir); end
+	Input_rootdir = join(split(InputDict["basefiname"],"/")[1:end-3], "/") #.../OUTPUT
+
+	Output_dir = InputDict["Output_dir"] #.../OUTPUT
+	if !ispath(Output_dir) mkpath(Output_dir); end
 
 	Year = split(InputDict["basefiname"],"/")[end-2]
 
-	reference = Output_rootdir*"/reference_xcorr_for$(Year).jld2" # this is fixed in the SeisXcorrelation/pstack.
+	reference = Output_dir*"/../reference_xcorr_for$(Year).jld2" # this is fixed in the SeisXcorrelation/pstack.
 
 	InputDict["referencepath"] = reference
 
@@ -81,8 +83,9 @@ function seisstack(InputDict::Dict)
         end
     end
 
-    datadir = split(InputDict["basefiname"], "/")
-    fodir = join(datadir[1:end-2], "/")*"/stack"
+    #datadir = split(InputDict["basefiname"], "/")
+	#fodir = join(datadir[1:end-2], "/")*"/stack"
+	fodir = Output_dir*"/stack"
     if ispath(fodir) rm(fodir, recursive=true);end
     mkpath(fodir)
     InputDict["fodir"] = fodir
@@ -118,6 +121,9 @@ function map_stack(InputDict::Dict, station::Tuple)
     metric     = InputDict["metric"]
     threshold  = InputDict["threshold"]
 	freqband   = InputDict["freqband"]
+
+	Output_dir = InputDict["Output_dir"] #.../OUTPUT
+	if !ispath(Output_dir) mkpath(Output_dir); end
 
 	if typeof(freqband) == Int
 		Nfreqband = freqband
@@ -402,8 +408,9 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 			# y, jd = parse.(Int64, split(time, ".")[1:2])
 			# tstamp_fname = replace(tstamp, ":" => "-")
-			fodirtemp = split(basefiname, "/")
-			fodir = join(fodirtemp[1:end-2], "/")*"/selectiveremoval_fraction"
+			# fodirtemp = split(basefiname, "/")
+			# fodir = join(fodirtemp[1:end-2], "/")*"/selectiveremoval_fraction"
+			fodir = InputDict["fodir"]*"/../hashstack_stats"
 			mkpath(fodir)
 			fopath = fodir*"/"*fname_out
 			open(fopath, "w") do io
@@ -518,8 +525,9 @@ function map_stack(InputDict::Dict, station::Tuple)
 					  title=@sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2)),
 					  xlabel = "Time lag [s]")
 
-			figdirtemp = split(basefiname, "/")
-			figdir = join(figdirtemp[1:end-2], "/")*"/fig"
+			# figdirtemp = split(basefiname, "/")
+			# figdir = join(figdirtemp[1:end-2], "/")*"/fig"
+			fifdir = InputDict["fodir"]*"/../fig"
 			if !ispath(figdir) mkpath(figdir); end
 			#figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
 			strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
