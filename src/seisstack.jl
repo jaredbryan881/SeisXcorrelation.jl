@@ -326,7 +326,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 					# @show xcorr.corr[200:400, 1]
 					# @show ref.corr[200:400, 1]
 
-					statsdir = InputDict["Output_dir"]+"/hashstack_stats"
+					statsdir = InputDict["Output_dir"]*"/hashstack_stats"
 			        if !ispath(statsdir) mkpath(statsdir); end
 
 					hashstack!(xcorr_ifreq, ref_ifreq,
