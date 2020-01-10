@@ -54,7 +54,6 @@ function append_wtcorr!(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Arr
 
 	# append wtcorr to store all cc functions after cwt
 	C.misc["wtcorr"] = Array{Float32, 3}(undef, T, N, Nfreqband)
-	C.misc["freqband"] = Array{Float32, 3}(undef, T, N, Nfreqband)
 
 	dt = 1/C.fs
 
@@ -68,15 +67,42 @@ function append_wtcorr!(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Arr
 
 		tr = C.corr[:,traceid]
 
+		# tapering to avoid edge effect during wavelet transform
+		SeisNoise.taper!(tr, C.fs,max_percentage = 0.1, max_length=40.0)
+
 		W, sj, freqs, coi = SeisNoise.cwt(tr, dt, C.freqmin, C.freqmax, dj=dj)
 
 		if !isempty(figdir)
-			freqs[freqs .== 0.0] .= 1e-6
-			Plots.heatmap(tvec, freqs, abs.(W)'[end:-1:1, :],  fill=:viridis,
-						xlabel = "Time(s)", ylabel ="Frequency(Hz)") #, yaxis=:log
+			# clims does not work with contourf with pyplot backend so far.
+			# waiting for official debug
+			Plots.pyplot()
+			pz = log10.(abs.(W'[end:-1:1, :]))
+			Plots.contour(tvec,reverse(freqs),pz,
+						c =:viridis,
+						fill=true,
+						size=(800, 600),
+						#clims=(cmin,cmax),
+						colorbar_title = "log10(abs(W))",
+						levels=200,
+						linewidth = 0.0,
+						linealpha = 0.0,
+						xtickfontsize=12,
+						ytickfontsize=12,
+						legendfontsize=12)
+
+
+			Plots.plot!(size=(800, 600),
+			   xtickfontsize=12,
+			   ytickfontsize=12,
+			   legendfontsize=12,
+			   legend=:outertopright)
+
+
 			cone = 1.0 ./ coi #[Hz]
-			Plots.plot!(tvec, cone)
+			Plots.plot!(tvec, cone, label="coi", legend=:topleft)
 			ylims!((C.freqmin, C.freqmax))
+			xlabel!("Time lag[s]")
+			ylabel!("Frequency [Hz]")
 			Plots.savefig(figdir*"/wavelet_scalogram_$(C.name)_$(C.id)_$(traceid).png")
 		end
 
@@ -106,6 +132,10 @@ function append_wtcorr!(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Arr
 		      end
 		      tr_freq_reconstructed[:, i] .+= inv_W
 		   end
+
+		   # tapering again to avoid edge effect during wavelet transform
+		   tr_freq_reconstructed[:, i] = SeisNoise.taper(tr_freq_reconstructed[:, i],
+		    						C.fs, max_percentage = 0.1, max_length=40.0)
 		end
 
 		if !isempty(figdir)
