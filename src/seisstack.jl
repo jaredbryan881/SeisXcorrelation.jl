@@ -294,16 +294,14 @@ function map_stack(InputDict::Dict, station::Tuple)
 				end
 
 
-				if isempty(xcorr.corr) ||
+				if isempty(xcorr_ifreq.corr) ||
 					reference == false && stackmode == "selective" ||
 					reference == false && stackmode == "hash"
 					# skip this pair as there is no cc function
 					# or no reference while selective/hash stack
-					println("Current trace is empty. continue.")
-					xcorr = CorrData()
-					xcorr.fs = fs
-					xcorr.maxlag = trunc(Int, Nmaxlag)
-					xcorr.corr = zeros(trunc(Int, Nmaxlag),1)
+					println("Current trace is empty or reference is not found. continue.")
+					#xcorr_ifreq = CorrData()
+					xcorr_ifreq.corr = zeros(trunc(Int, Nmaxlag),1)
 					full_stnkeywithcha = ""
 
 				# switch the stacking method
@@ -326,7 +324,11 @@ function map_stack(InputDict::Dict, station::Tuple)
 					# @show xcorr.corr[200:400, 1]
 					# @show ref.corr[200:400, 1]
 
-					statsdir = InputDict["Output_dir"]*"/hashstack_stats"
+					freqbandmin = xcorr.misc["freqband"][ifreq]
+					freqbandmax = xcorr.misc["freqband"][ifreq+1]
+					strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
+
+					statsdir = InputDict["Output_dir"]*"/hashstack_stats_"*strfreq
 			        if !ispath(statsdir) mkpath(statsdir); end
 
 					hashstack!(xcorr_ifreq, ref_ifreq,
