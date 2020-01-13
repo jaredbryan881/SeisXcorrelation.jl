@@ -36,8 +36,10 @@ Append wavelet transformed cc functions into CorrData.
 - `figdir::String` : if !isempty(figdir), output debugging figures to figdir.
 
 """
+
+
 function append_wtcorr!(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Array{Float32, 1}};
-						 dj = 1/12, figdir::String = "")
+						 dj = 1/12, α0 = 0.0, αmax = 0.25, figdir::String = "")
 	# process flow:
 	# 1. compute frequency band
 	# 2. apply wavelet transform
@@ -68,7 +70,12 @@ function append_wtcorr!(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Arr
 		tr = C.corr[:,traceid]
 
 		# tapering to avoid edge effect during wavelet transform
-		SeisNoise.taper!(tr, C.fs,max_percentage = 0.1, max_length=40.0)
+		#SeisNoise.taper!(tr, C.fs,max_percentage = 0.1, max_length=40.0)
+		taperwindow = zeros(T)
+		margin = round(Int, 0.5*α0*T)
+		tukeywindow = tukey(T-2*margin, 0.1)
+		taperwindow[margin+1:T - margin] = tukeywindow
+		tr .*= taperwindow
 
 		W, sj, freqs, coi = SeisNoise.cwt(tr, dt, C.freqmin, C.freqmax, dj=dj)
 
@@ -134,8 +141,19 @@ function append_wtcorr!(C::CorrData, freqband::Union{Int, Array{Float64, 1}, Arr
 		   end
 
 		   # tapering again to avoid edge effect during wavelet transform
-		   tr_freq_reconstructed[:, i] = SeisNoise.taper(tr_freq_reconstructed[:, i],
-		    						C.fs, max_percentage = 0.1, max_length=40.0)
+		   # adaptive taper percentage due to stronger edge effect at high frequency
+		   max_percentage = ((αmax-α0)/(freqband[end]-freqband[2]))*(freqbandmax-freqband[2]) + α0
+		   # @show freqbandmax
+		   # @show max_percentage
+		   #tr_freq_reconstructed[:, i] = SeisNoise.taper(tr_freq_reconstructed[:, i],
+		   # 						C.fs, max_percentage = max_percentage, max_length=3600.0)
+		   #tr_freq_reconstructed[:, i] .*= tukey(T, max_percentage)
+		   taperwindow = zeros(T)
+		   margin = round(Int, 0.5*max_percentage*T)
+		   tukeywindow = tukey(T-2*margin, 0.1)
+		   taperwindow[margin+1:T - margin] = tukeywindow
+		   tr_freq_reconstructed[:, i] .*= taperwindow
+
 		end
 
 		if !isempty(figdir)
