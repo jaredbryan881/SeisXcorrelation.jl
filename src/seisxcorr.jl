@@ -131,7 +131,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                     #SeisData(data["$tstamp/$stn1"])
                     SeisData(inFile["$tstamp/$stn1"])
                 catch;
-                    push!(tserrorList, "$tstamp/$stn1")
+                    push!(tserrorList, "$stn1")
                     filter!(a->a≠stn1, stlist)
                     println("$tstamp: $stn1 encountered an error on read. Skipping.")
                     continue
@@ -145,7 +145,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 # do not attempt fft if data was not available
                 try
                     if S1[1].misc["dlerror"] == 1
-                        push!(tserrorList, "$tstamp/$stn1")
+                        push!(tserrorList, "$stn1")
                         filter!(a->a≠stn1, stlist)
                         println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
                         continue
@@ -158,7 +158,6 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 npts1 = Int(time_unit * S1[1].fs)
 
                 if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
-
 
 #--------
                 phase_shift!(S1)
@@ -184,7 +183,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
             end
         catch y
             println(y)
-            push!(tserrorList, "$tstamp/$stn1")
+            push!(tserrorList, "$stn1")
             filter!(a->a≠stn1, stlist)
             println("$tstamp: $stn1 encountered an error on FFT1. Skipping.")
             continue
@@ -199,8 +198,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
             # autocorrelation
             if (ct=="acorr") && ("acorr" in corrtype)
-                # set the stn2 FFT to the already computed FFT for stn1
-                FFT2 = FFT1
+               # set the stn2 FFT to the already computed FFT for stn1
+               FFT2 = deepcopy(FFT1)
 
             # cross- or cross-channel correlation
             elseif ct in corrtype
@@ -215,7 +214,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             #SeisData(data["$tstamp/$stn2"])
                             SeisData(inFile["$tstamp/$stn2"])
                         catch;
-                            push!(tserrorList, "$tstamp/$stn2")
+                            push!(tserrorList, "$stn2")
                             filter!(a->a≠stn2, stlist)
                             println("$tstamp: $stn2 encountered an error on read. Skipping.")
                             continue
@@ -228,7 +227,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         # do not attempt fft if data was not available
                         try
                             if S2[1].misc["dlerror"] == 1
-                                push!(tserrorList, "$tstamp/$stn2")
+                                push!(tserrorList, "$stn2")
                                 filter!(a->a≠stn2, stlist)
                                 println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
                                 continue
@@ -263,7 +262,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         FFT2
                     end
                 catch y
-                    push!(tserrorList, "$tstamp/$stn2")
+                    push!(tserrorList, "$stn2")
                     filter!(a->a≠stn2, stlist)
                     println("$tstamp: $stn2 encountered an error on FFT2. Skipping.")
                     continue
@@ -294,21 +293,38 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 tt3temp = @elapsed xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type="cross-correlation")
                 #print("xcorr: $tt3temp ")
                 varname = "$tstamp/$stn1.$stn2"
-                try
-                    # compute distance between stations
-                    xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
-                    # save location of each station
-                    xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
 
-                    # stack over DL_time_unit
-                    if stack==true stack!(xcorr, allstack=true) end
 
-                    outFile[varname] = xcorr
-                catch y
-                    println(y)
-                    println("$stn1 and $stn2 have no overlap at $tstamp.")
-                    push!(tserrorList, "$tstamp/$stn1")
+		           #DEBUG
+	            # if stn1 == stn2 == "BP.VCAB..BP1" && occursin("57", tstamp)
+            	#    println(xcorr)
+        		#    @show xcorr.corr
+        		#    @show xcorr.misc
+        		#    @show varname
+        		#end
+
+        		# try
+                # compute distance between stations
+                xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
+                # save location of each station
+                xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
+
+                # stack over DL_time_unit
+                if stack==true stack!(xcorr, allstack=true) end
+
+                #DEBUG:
+                if occursin("2004.57", tstamp) && ct=="acorr"
+                    println("XCORR:")
+                    println(xcorr)
+		    #continue
                 end
+
+                outFile[varname] = xcorr
+                # catch y
+                #     println(y)
+                #     println("$stn1 and $stn2 have no overlap at $tstamp.")
+                #     push!(tserrorList, "$stn1")
+                # end
             end
         end
 
@@ -318,6 +334,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     outFile["info/errors"] = tserrorList
     close(inFile)
     close(outFile)
+
+    return nothing
+ 
 end
 
 

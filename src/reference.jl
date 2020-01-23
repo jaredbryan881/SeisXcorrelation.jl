@@ -101,6 +101,8 @@ function compute_reference_xcorr(InputDict::Dict)
 	end
 
 	# save initial reference by linear stack
+	# DEBUG:
+	@show refname
 	f_out = jldopen(refname, "w")
 	for stnpair in keys(ref_dict_dailystack)
 		# #Debug
