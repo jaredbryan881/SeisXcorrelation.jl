@@ -111,11 +111,10 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     outFile["info/timeunit"] = time_unit
 
     println("$tstamp: Computing cross-correlations")
-    stniter = 0 # counter to prevent computing duplicate xcorrs with reversed order
+    #stniter = 0 # counter to prevent computing duplicate xcorrs with reversed order
     # iterate over station list
 
-    for stn1 in stlist
-        stniter+=1
+    for (stniter, stn1) in enumerate(stlist)
 
         # don't attempt FFT if this failed already
         if stn1 in tserrorList continue end
@@ -132,7 +131,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                     SeisData(inFile["$tstamp/$stn1"])
                 catch;
                     push!(tserrorList, "$stn1")
-                    filter!(a->a≠stn1, stlist)
+                    #filter!(a->a≠stn1, stlist)
                     println("$tstamp: $stn1 encountered an error on read. Skipping.")
                     continue
                 end
@@ -146,7 +145,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 try
                     if S1[1].misc["dlerror"] == 1
                         push!(tserrorList, "$stn1")
-                        filter!(a->a≠stn1, stlist)
+                        #filter!(a->a≠stn1, stlist)
                         println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
                         continue
                     end
@@ -184,7 +183,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         catch y
             println(y)
             push!(tserrorList, "$stn1")
-            filter!(a->a≠stn1, stlist)
+            #filter!(a->a≠stn1, stlist)
             println("$tstamp: $stn1 encountered an error on FFT1. Skipping.")
             continue
         end
@@ -215,7 +214,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             SeisData(inFile["$tstamp/$stn2"])
                         catch;
                             push!(tserrorList, "$stn2")
-                            filter!(a->a≠stn2, stlist)
+                            #filter!(a->a≠stn2, stlist)
                             println("$tstamp: $stn2 encountered an error on read. Skipping.")
                             continue
                         end
@@ -228,7 +227,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         try
                             if S2[1].misc["dlerror"] == 1
                                 push!(tserrorList, "$stn2")
-                                filter!(a->a≠stn2, stlist)
+                                #filter!(a->a≠stn2, stlist)
                                 println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
                                 continue
                             end
@@ -263,7 +262,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                     end
                 catch y
                     push!(tserrorList, "$stn2")
-                    filter!(a->a≠stn2, stlist)
+                    #filter!(a->a≠stn2, stlist)
                     println("$tstamp: $stn2 encountered an error on FFT2. Skipping.")
                     continue
                 end
@@ -336,7 +335,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     close(outFile)
 
     return nothing
- 
+
 end
 
 
