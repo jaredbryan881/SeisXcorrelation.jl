@@ -304,6 +304,10 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
         		# try
                 # compute distance between stations
+                if isnothing(xcorr)
+                    # compute_cc returns nothing, so skip this
+                    continue;
+                end
                 xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
                 # save location of each station
                 xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
