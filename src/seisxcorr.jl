@@ -132,12 +132,6 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                      continue
                  end
 
-            if isnothing(S1)
-                println("$tstamp: $stn1 encountered an error on FFT1: S1 nothing. Skipping.")
-                push!(tserrorList, "$stn1")
-                continue
-            end
-
             if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
             delete!(S1[1].misc, "kurtosis")
             delete!(S1[1].misc, "eqtimewindow")
@@ -164,6 +158,13 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 onebit!(R1)
             end
             #3. create FFTData
+
+            if isnothing(R1)
+                println("$tstamp: $stn1 encountered an error on FFT1: R1 nothing. Skipping.")
+                push!(tserrorList, "$stn1")
+                continue
+            end
+
             tt1temp = @elapsed FFT1 = compute_fft(R1)
             # tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
             #                                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
@@ -205,12 +206,6 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             continue
                         end
 
-                    if isnothing(S2)
-                        println("$tstamp: $stn2 encountered an error on FFT2: S2 nothing. Skipping.")
-                        push!(tserrorList, "$stn2")
-                        continue
-                    end
-
                     if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
                     delete!(S2[1].misc, "kurtosis")
                     delete!(S2[1].misc, "eqtimewindow")
@@ -238,6 +233,13 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         onebit!(R2)
                     end
                     #3. create FFTData
+
+                    if isnothing(R2)
+                        println("$tstamp: $stn2 encountered an error on FFT2: R2 nothing. Skipping.")
+                        push!(tserrorList, "$stn2")
+                        continue
+                    end
+
                     tt2temp = @elapsed FFT2 = compute_fft(R2)
                     # tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
                     #                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
