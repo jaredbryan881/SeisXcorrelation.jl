@@ -119,61 +119,56 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         # don't attempt FFT if this failed already
         if stn1 in tserrorList continue end
 
-        FFT1 = try
-            # try to read FFT from cached FFTs
-            if stn1 in keys(FFTDict)
-                FFTDict[stn1]
-            else
+        # try to read FFT from cached FFTs
+        if stn1 in keys(FFTDict)
+            FFT1 = FFTDict[stn1]
+        else
+            # read station SeisChannels into SeisData before FFT
+            S1 = try
+                    SeisData(inFile["$tstamp/$stn1"])
+                 catch
+                     println("$tstamp: $stn1 encountered an error on FFT1 read seisdata. Skipping.")
+                     push!(tserrorList, "$stn1")
+                     continue
+                 end
 
-                # read station SeisChannels into SeisData before FFT
-                S1 = SeisData(inFile["$tstamp/$stn1"])
+            if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
+            delete!(S1[1].misc, "kurtosis")
+            delete!(S1[1].misc, "eqtimewindow")
 
-                if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
-                delete!(S1[1].misc, "kurtosis")
-                delete!(S1[1].misc, "eqtimewindow")
-
-                # do not attempt fft if data was not available
-                if haskey(S1[1].misc, "dlerror")
-                    if S1[1].misc["dlerror"] == 1
-                        push!(tserrorList, "$stn1")
-                        #filter!(a->a≠stn1, stlist)
-                        println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
-                        continue
-                    end
+            # do not attempt fft if data was not available
+            if haskey(S1[1].misc, "dlerror")
+                if S1[1].misc["dlerror"] == 1
+                    push!(tserrorList, "$stn1")
+                    #filter!(a->a≠stn1, stlist)
+                    println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
+                    continue
                 end
-
-                # make sure the data is the proper length to avoid dimension mismatch
-                npts1 = Int(time_unit * S1[1].fs)
-
-                if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
-
-#--------
-                phase_shift!(S1)
-                R1 = RawData(S1,Int(cc_len), Int(cc_step))
-                if time_norm == "one-bit"
-                    #println("apply one-bit normalization.")
-                    onebit!(R1)
-                end
-                #3. create FFTData
-                tt1temp = @elapsed FFT1 = compute_fft(R1)
-                # tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
-                #                                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
-#--------
-                # smooth FFT1 only if coherence is selected. Deconvolution will use only FFT2.
-                if corrmethod == "coherence"
-                   coherence!(FFT1, half_win)
-                end
-
-                #println("fft1: $tt1temp ")
-                FFTDict[stn1] = FFT1
-                FFT1
             end
-        catch y
-            println(y)
-            push!(tserrorList, "$stn1")
-            #filter!(a->a≠stn1, stlist)
-            println("$tstamp: $stn1 encountered an error on FFT1. Skipping.")
-            continue
+
+            # make sure the data is the proper length to avoid dimension mismatch
+            npts1 = Int(time_unit * S1[1].fs)
+
+            if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
+#--------
+            phase_shift!(S1)
+            R1 = RawData(S1,Int(cc_len), Int(cc_step))
+            if time_norm == "one-bit"
+                #println("apply one-bit normalization.")
+                onebit!(R1)
+            end
+            #3. create FFTData
+            tt1temp = @elapsed FFT1 = compute_fft(R1)
+            # tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
+            #                                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
+#--------
+            # smooth FFT1 only if coherence is selected. Deconvolution will use only FFT2.
+            if corrmethod == "coherence"
+               coherence!(FFT1, half_win)
+            end
+
+            #println("fft1: $tt1temp ")
+            FFTDict[stn1] = FFT1
         end
 
         # iterate over station list again
@@ -192,59 +187,56 @@ function map_xcorr(tstamp::String, InputDict::Dict)
             elseif ct in corrtype
 
                 # try to read FFT from cached FFTs
-                FFT2 = try
-                    if stn2 in keys(FFTDict)
-                        FFTDict[stn2]
-                    else
-                        # read station SeisChannels into SeisData before FFT
-                        S2 = SeisData(inFile["$tstamp/$stn2"])
-
-                        if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
-                        delete!(S2[1].misc, "kurtosis")
-                        delete!(S2[1].misc, "eqtimewindow")
-
-                        # do not attempt fft if data was not available
-                        if haskey(S2[1].misc, "dlerror")
-                            if S2[1].misc["dlerror"] == 1
-                                push!(tserrorList, "$stn2")
-                                #filter!(a->a≠stn1, stlist)
-                                println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
-                                continue
-                            end
+                if stn2 in keys(FFTDict)
+                    FFT2 = FFTDict[stn2]
+                else
+                    # read station SeisChannels into SeisData before FFT
+                    S2 = try
+                            SeisData(inFile["$tstamp/$stn2"])
+                        catch
+                            println("$tstamp: $stn2 encountered an error on FFT2 read seisdata. Skipping.")
+                            push!(tserrorList, "$stn2")
+                            continue
                         end
 
-                        # make sure the data is the proper length to avoid dimension mismatch
-                        npts2 = Int(time_unit * S2[1].fs)
+                    if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
+                    delete!(S2[1].misc, "kurtosis")
+                    delete!(S2[1].misc, "eqtimewindow")
 
-                        if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[end,1]=npts2 end
-#------------------------------------------------------------------#
-                        # Phase shift SeisChannel if starttime is not aligned with sampling period.
-                        phase_shift!(S2)
-                        R2 = RawData(S2,Int(cc_len), Int(cc_step))
-                        if time_norm == "one-bit"
-                            #println("apply one-bit normalization.")
-                            onebit!(R2)
+                    # do not attempt fft if data was not available
+                    if haskey(S2[1].misc, "dlerror")
+                        if S2[1].misc["dlerror"] == 1
+                            push!(tserrorList, "$stn2")
+                            #filter!(a->a≠stn1, stlist)
+                            println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
+                            continue
                         end
-                        #3. create FFTData
-                        tt2temp = @elapsed FFT2 = compute_fft(R2)
-                        # tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
-                        #                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
-#------------------------------------------------------------------#
-                        # smooth FFT2 if it hasn't been smoothed already
-                        if corrmethod == "coherence"
-                            coherence!(FFT2, half_win)
-                        end
-                        #print("fft2: $tt2temp ")
-                        FFTDict[stn2] = FFT2
-                        FFT2
                     end
-                catch y
-                    push!(tserrorList, "$stn2")
-                    #filter!(a->a≠stn2, stlist)
-                    println("$tstamp: $stn2 encountered an error on FFT2. Skipping.")
-                    continue
-                end
 
+                    # make sure the data is the proper length to avoid dimension mismatch
+                    npts2 = Int(time_unit * S2[1].fs)
+
+                    if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[end,1]=npts2 end
+#------------------------------------------------------------------#
+                    # Phase shift SeisChannel if starttime is not aligned with sampling period.
+                    phase_shift!(S2)
+                    R2 = RawData(S2,Int(cc_len), Int(cc_step))
+                    if time_norm == "one-bit"
+                        #println("apply one-bit normalization.")
+                        onebit!(R2)
+                    end
+                    #3. create FFTData
+                    tt2temp = @elapsed FFT2 = compute_fft(R2)
+                    # tt2temp = @elapsed FFT2 = compute_fft(S2, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
+                    #                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
+#------------------------------------------------------------------#
+                    # smooth FFT2 if it hasn't been smoothed already
+                    if corrmethod == "coherence"
+                        coherence!(FFT2, half_win)
+                    end
+                    #print("fft2: $tt2temp ")
+                    FFTDict[stn2] = FFT2
+                end
             else
                 #println("Skipping cross-correlation of $stn1 and $stn2.")
                 continue
