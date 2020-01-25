@@ -132,8 +132,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                      continue
                  end
 
-            if isnothing(S1)
-                println("$tstamp: $stn1 encountered an error on FFT1: S1 nothing. Skipping.")
+            if isempty(S1)
+                println("$tstamp: $stn1 encountered an error on FFT1: S1 empty. Skipping.")
                 push!(tserrorList, "$stn1")
                 continue
             end
@@ -212,8 +212,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             continue
                         end
 
-                    if isnothing(S2)
-                        println("$tstamp: $stn2 encountered an error on FFT2: S2 nothing. Skipping.")
+                    if isempty(S2)
+                        println("$tstamp: $stn2 encountered an error on FFT2: S2 empty. Skipping.")
                         push!(tserrorList, "$stn2")
                         continue
                     end
