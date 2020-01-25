@@ -132,6 +132,12 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                      continue
                  end
 
+            if isnothing(S1)
+                println("$tstamp: $stn1 encountered an error on FFT1: S1 nothing. Skipping.")
+                push!(tserrorList, "$stn1")
+                continue
+            end
+
             if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
             delete!(S1[1].misc, "kurtosis")
             delete!(S1[1].misc, "eqtimewindow")
@@ -147,9 +153,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
             end
 
             # make sure the data is the proper length to avoid dimension mismatch
-            npts1 = Int(time_unit * S1[1].fs)
+            #npts1 = Int(time_unit * S1[1].fs)
 
-            if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
+            #if (length(S1[1].x) > npts1) S1[1].x=S1[1].x[1:npts1]; S1[1].t[end,1]=npts1 end
 #--------
             phase_shift!(S1)
             R1 = RawData(S1,Int(cc_len), Int(cc_step))
@@ -199,6 +205,12 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             continue
                         end
 
+                    if isnothing(S2)
+                        println("$tstamp: $stn2 encountered an error on FFT2: S2 nothing. Skipping.")
+                        push!(tserrorList, "$stn2")
+                        continue
+                    end
+
                     if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
                     delete!(S2[1].misc, "kurtosis")
                     delete!(S2[1].misc, "eqtimewindow")
@@ -214,9 +226,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                     end
 
                     # make sure the data is the proper length to avoid dimension mismatch
-                    npts2 = Int(time_unit * S2[1].fs)
+                    #npts2 = Int(time_unit * S2[1].fs)
 
-                    if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[end,1]=npts2 end
+                    #if (length(S2[1].x) > npts2) S2[1].x=S2[1].x[1:npts2]; S2[1].t[end,1]=npts2 end
 #------------------------------------------------------------------#
                     # Phase shift SeisChannel if starttime is not aligned with sampling period.
                     phase_shift!(S2)
