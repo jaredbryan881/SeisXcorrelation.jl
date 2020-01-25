@@ -126,31 +126,20 @@ function map_xcorr(tstamp::String, InputDict::Dict)
             else
 
                 # read station SeisChannels into SeisData before FFT
-                S1 = try
-                    #SeisData(data["$tstamp/$stn1"])
-                    SeisData(inFile["$tstamp/$stn1"])
-                catch;
-                    push!(tserrorList, "$stn1")
-                    #filter!(a->a≠stn1, stlist)
-                    println("$tstamp: $stn1 encountered an error on read. Skipping.")
-                    continue
-                end
+                S1 = SeisData(inFile["$tstamp/$stn1"])
 
                 if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
-
                 delete!(S1[1].misc, "kurtosis")
                 delete!(S1[1].misc, "eqtimewindow")
 
                 # do not attempt fft if data was not available
-                try
+                if haskey(S1[1].misc, "dlerror")
                     if S1[1].misc["dlerror"] == 1
                         push!(tserrorList, "$stn1")
                         #filter!(a->a≠stn1, stlist)
                         println("$tstamp: $stn1 encountered an error: dlerror==1. Skipping.")
                         continue
                     end
-                catch;
-                    # assume key "dlerror" does not exist (not downloaded via SeisDownload)
                 end
 
                 # make sure the data is the proper length to avoid dimension mismatch
@@ -170,7 +159,6 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 # tt1temp = @elapsed FFT1 = compute_fft(S1, freqmin, freqmax, fs, Int(cc_step), Int(cc_len),
                 #                                 to_whiten=to_whiten, time_norm=time_norm, max_std=max_std)
 #--------
-
                 # smooth FFT1 only if coherence is selected. Deconvolution will use only FFT2.
                 if corrmethod == "coherence"
                    coherence!(FFT1, half_win)
@@ -209,30 +197,20 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         FFTDict[stn2]
                     else
                         # read station SeisChannels into SeisData before FFT
-                        S2 = try
-                            #SeisData(data["$tstamp/$stn2"])
-                            SeisData(inFile["$tstamp/$stn2"])
-                        catch;
-                            push!(tserrorList, "$stn2")
-                            #filter!(a->a≠stn2, stlist)
-                            println("$tstamp: $stn2 encountered an error on read. Skipping.")
-                            continue
-                        end
+                        S2 = SeisData(inFile["$tstamp/$stn2"])
 
                         if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
                         delete!(S2[1].misc, "kurtosis")
                         delete!(S2[1].misc, "eqtimewindow")
 
                         # do not attempt fft if data was not available
-                        try
+                        if haskey(S2[1].misc, "dlerror")
                             if S2[1].misc["dlerror"] == 1
                                 push!(tserrorList, "$stn2")
-                                #filter!(a->a≠stn2, stlist)
+                                #filter!(a->a≠stn1, stlist)
                                 println("$tstamp: $stn2 encountered an error: dlerror==1. Skipping.")
                                 continue
                             end
-                        catch;
-                            # assume that the key dlerror does not exist (data not downloaded via SeisDownload)
                         end
 
                         # make sure the data is the proper length to avoid dimension mismatch
@@ -308,7 +286,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                     # compute_cc returns nothing, so skip this
                     continue;
                 end
-                xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
+
+                #xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
                 # save location of each station
                 xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
 
@@ -316,7 +295,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 if stack==true stack!(xcorr, allstack=true) end
 
                 #DEBUG:
-                if occursin("2004.57", tstamp) && ct=="acorr"
+                if occursin("2004.54", tstamp) && ct=="acorr"
                     println("XCORR:")
                     println(xcorr)
 		    #continue
