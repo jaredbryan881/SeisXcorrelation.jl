@@ -132,6 +132,12 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                      continue
                  end
 
+            if isnothing(S1)
+                println("$tstamp: $stn1 encountered an error on FFT1: S1 nothing. Skipping.")
+                push!(tserrorList, "$stn1")
+                continue
+            end
+
             if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
             delete!(S1[1].misc, "kurtosis")
             delete!(S1[1].misc, "eqtimewindow")
@@ -205,6 +211,12 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             push!(tserrorList, "$stn2")
                             continue
                         end
+
+                    if isnothing(S2)
+                        println("$tstamp: $stn2 encountered an error on FFT2: S2 nothing. Skipping.")
+                        push!(tserrorList, "$stn2")
+                        continue
+                    end
 
                     if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
                     delete!(S2[1].misc, "kurtosis")
