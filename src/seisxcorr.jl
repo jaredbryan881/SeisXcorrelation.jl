@@ -132,8 +132,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                      continue
                  end
 
-            if isempty(S1)
-                println("$tstamp: $stn1 encountered an error on FFT1: S1 empty. Skipping.")
+            if size(S1.t[1],1) > 2
+                println("$tstamp: $stn1 has gap; for the moment, Skipping.")
                 push!(tserrorList, "$stn1")
                 continue
             end
@@ -212,8 +212,8 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                             continue
                         end
 
-                    if isempty(S2)
-                        println("$tstamp: $stn2 encountered an error on FFT2: S2 empty. Skipping.")
+                    if size(S2.t[1],1) > 2
+                        println("$tstamp: $stn2 has gap; for the moment, Skipping.")
                         push!(tserrorList, "$stn2")
                         continue
                     end
