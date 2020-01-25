@@ -133,9 +133,10 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                  end
 
             if size(S1.t[1],1) > 2
-                println("$tstamp: $stn1 has gap; for the moment, Skipping.")
-                push!(tserrorList, "$stn1")
-                continue
+                println("$tstamp: $stn1 has gap; for the moment, using ungap.")
+                ungap!(S1, m=false)
+                #push!(tserrorList, "$stn1")
+                #continue
             end
 
             if length(S1)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
@@ -213,9 +214,10 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                         end
 
                     if size(S2.t[1],1) > 2
-                        println("$tstamp: $stn2 has gap; for the moment, Skipping.")
-                        push!(tserrorList, "$stn2")
-                        continue
+                        println("$tstamp: $stn2 has gap; for the moment, using ungap.")
+                        ungap!(S2, m=false)
+                        #push!(tserrorList, "$stn2")
+                        #continue
                     end
 
                     if length(S2)[1] > 1 @warn "SeisData contains multiple channels. Operating only on the first." end
