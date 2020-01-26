@@ -269,7 +269,12 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 		#this time stamp is taken into account to stack
 
 	    # read unstacked xcorrs for each time stamp
-	    f_cur = jldopen(corrname*".$tstamp.jld2")
+	    f_cur = try jldopen(corrname*".$tstamp.jld2")
+			catch
+				@show tstamp
+				error("debug")
+			end
+ 
 	    grp = try
 			f_cur[tstamp] # xcorrs
 		catch
