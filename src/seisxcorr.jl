@@ -103,13 +103,6 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         return nothing
     end
 
-
-
-    # create output file for each time stamp, fill relevant info
-    outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
-    outFile["info/stationlist"] = stlist
-    outFile["info/timeunit"] = time_unit
-
     println("$tstamp: Computing cross-correlations")
     #stniter = 0 # counter to prevent computing duplicate xcorrs with reversed order
     # iterate over station list
@@ -327,7 +320,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 		    #continue
                 end
 
-                outFile[varname] = xcorr
+                jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
+                    outFile[varname] = xcorr
+                end
                 # catch y
                 #     println(y)
                 #     println("$stn1 and $stn2 have no overlap at $tstamp.")
@@ -339,9 +334,15 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         # release memory held by the FFT and time series for this station
         delete!(FFTDict, stn1)
     end
-    outFile["info/errors"] = tserrorList
+
+    jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
+        outFile["info/stationlist"] = stlist
+        outFile["info/timeunit"] = time_unit
+        outFile["info/errors"] = tserrorList
+    end
+
     close(inFile)
-    close(outFile)
+    # close(outFile)
 
     return nothing
 
