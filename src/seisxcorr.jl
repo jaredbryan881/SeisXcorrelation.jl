@@ -361,7 +361,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         end
     end
 
-    jldopen("$basefoname.$tstamp.jld2", true, true, true, IOStream) do outFile
+    jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
 
         outFile["info/stationlist"] = stlist
         outFile["info/timeunit"] = time_unit
