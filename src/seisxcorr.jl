@@ -343,6 +343,11 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
     # save xcorr outside the loop
 
+    # clean preexisting cc file
+    if ispath("$basefoname.$tstamp.jld2")
+        rm("$basefoname.$tstamp.jld2")
+    end
+
     jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
 
         outFile["info/stationlist"] = stlist
