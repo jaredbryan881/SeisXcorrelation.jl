@@ -348,6 +348,19 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         rm("$basefoname.$tstamp.jld2")
     end
 
+    #DEBUG
+    if occursin("2003.96.", tstamp)
+        @show stlist
+        @show time_unit
+        @show tserrorList
+        @show "xcorrlist"
+        for (i, varname) in enumerate(varnamelist)
+            @show varname
+            @show xcorrlist[i]
+            @show xcorrlist[i].t
+        end
+    end
+
     jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
 
         outFile["info/stationlist"] = stlist
