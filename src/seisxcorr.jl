@@ -107,6 +107,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     #stniter = 0 # counter to prevent computing duplicate xcorrs with reversed order
     # iterate over station list
 
+    varnamelist = []
+    xcorrlist = []
+
     for (stniter, stn1) in enumerate(stlist)
 
         # don't attempt FFT if this failed already
@@ -317,12 +320,15 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 if occursin("2004.54", tstamp) && ct=="acorr"
                     println("XCORR:")
                     println(xcorr)
-		    #continue
+		            #continue
                 end
 
-                jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
-                    outFile[varname] = xcorr
-                end
+                push!(varnamelist, varname)
+                push!(xcorrlist, xcorr)
+
+                # jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
+                #     outFile[varname] = xcorr
+                # end
                 # catch y
                 #     println(y)
                 #     println("$stn1 and $stn2 have no overlap at $tstamp.")
@@ -335,10 +341,17 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         delete!(FFTDict, stn1)
     end
 
+    # save xcorr outside the loop
+
     jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
+
         outFile["info/stationlist"] = stlist
         outFile["info/timeunit"] = time_unit
         outFile["info/errors"] = tserrorList
+
+        for (i, varname) in enumerate(varnamelist)
+            outFile[varname] = xcorrlist[i]
+        end
     end
 
     close(inFile)
