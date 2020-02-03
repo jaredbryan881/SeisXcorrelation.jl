@@ -468,7 +468,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 		end
 
 	 	manip_all_cc = zeros(Float32, Nmaxlag, Nfreqband)
-		manip_temp_cc = @view xcorr_temp.corr[:, tind, :]
+		manip_temp_cc = @view xcorr_temp.misc["wtcorr"][:, tind, :]
 
 		for ifreq = 1:Nfreqband
 			manip_ifreq_cc = @view manip_temp_cc[:, :, ifreq]
