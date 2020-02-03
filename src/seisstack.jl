@@ -448,7 +448,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 		end
 
 		#find timestamp within time window
-		datetime_list = u2d.(xcorr_temp)
+		datetime_list = u2d.(xcorr_temp.t)
 		tind = findall(x -> twin_left-Second(buffer_timewindow) <= x &&
 			 x < twin_right - Second(buffer_timewindow), datetime_list)
 
