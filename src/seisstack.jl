@@ -172,7 +172,7 @@ function map_stack(InputDict::Dict, station::Tuple)
     lags = -maxlag:1/fs:maxlag
 
 	#save metadata
-	xcorr_temp = get_metadata(timestamplist, timeslice, basefiname, Nmaxlag, freqband,
+	xcorr_temp = get_metadata(timestamplist, starttime, endtime, basefiname, Nmaxlag, freqband,
 							filter, stnpair, stnpairrev)
 
 	if typeof(xcorr_temp) != CorrData
@@ -598,7 +598,7 @@ get_metadata(timestamplist::Array, timeslice::Array, basename::String, Nmaxlag::
 get metadata from available cc jld2.
 """
 
-function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String, Nmaxlag::Int,
+function get_metadata(timestamplist::Array, starttime::DateTime, endtime::DateTime, basefiname::String, Nmaxlag::Int,
 	 	freqband::Union{Int, Array{Float64, 1}, Array{Float32, 1}}, filter::Union{Bool, AbstractArray},
 		stnpair::String, stnpairrev::String)
 
@@ -610,10 +610,18 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 		Nfreqband = length(freqband)-1
 	end
 
-	breakflag=false
-	for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
-		f_cur = jldopen(basefiname*".$time.jld2")
-		full_stnkeys = keys(f_cur[time])
+	for (titer, tstamp) in enumerate(timestamplist)
+
+		y1, jd1 = parse.(Int64, split(tstamp, ".")[1:2])
+		m1, d1 = j2md(y1,jd1)
+		datetime_tt = DateTime(y1, m1, d1)
+
+		if  starttime > datetime_tt || endtime < datetime_tt
+			continue;
+		end
+
+		f_cur = jldopen(basefiname*".$(tstamp).jld2")
+		full_stnkeys = keys(f_cur[tstamp])
 		# reformat full_stnkeys to stack group name format
 		nochan_stnkeys = String[]
 
@@ -625,11 +633,6 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 			cur_comp=cur_comp1*cur_comp2
 			push!(nochan_stnkeys, cur_stn1*"-"*cur_stn2*"-"*cur_comp)
 		end
-
-		# println(stnpair)
-		# println(stnpairrev)
-		# println(nochan_stnkeys)
-		#
 
 		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 
@@ -645,7 +648,7 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 
 			fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
 			fullstnpair = full_stnkeys[fullstnpair_id]
-			xcorr = f_cur["$time/$fullstnpair"]
+			xcorr = f_cur["$(tstamp)/$fullstnpair"]
 
 			# store meta data to xcorr_temp
 			xcorr.corr , nanzerocol = remove_nanandzerocol(xcorr.corr)
