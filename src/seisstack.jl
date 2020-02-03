@@ -661,7 +661,7 @@ function get_metadata(timestamplist::Array, starttime::DateTime, endtime::DateTi
 				xcorr.freqmax = filter[2]
 			end
 
-			# append_wtcorr!(xcorr, freqband)
+			append_wtcorr!(xcorr, freqband)
 
 			xcorr_temp = copy_without_wtcorr(xcorr)
 			xcorr_temp.corr = Array{Float32, 2}(undef, Nmaxlag, 0)
