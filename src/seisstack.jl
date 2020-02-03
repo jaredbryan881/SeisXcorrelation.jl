@@ -61,7 +61,6 @@ function seisstack(InputDict::Dict)
     catch
         println("reference not found (if stackmode=linear, please ignore this warning.).\n
 		 		use all potential station from basefile.")
-	#	error("need to update. Abort")
         reference = false
 
         inFile = jldopen(InputDict["basefiname"]*".jld2", "r")
@@ -83,8 +82,6 @@ function seisstack(InputDict::Dict)
         end
     end
 
-    #datadir = split(InputDict["basefiname"], "/")
-	#fodir = join(datadir[1:end-2], "/")*"/stack"
 	fodir = Output_dir*"/stack"
     if ispath(fodir) rm(fodir, recursive=true);end
     mkpath(fodir)
@@ -122,6 +119,10 @@ function map_stack(InputDict::Dict, station::Tuple)
     threshold  = InputDict["threshold"]
 	freqband   = InputDict["freqband"]
 
+	timeunit   = InputDict["timeunit"]
+	starttime  = InputDict["starttime"]
+    endtime    = InputDict["endtime"]
+
 	Output_dir = InputDict["Output_dir"] #.../OUTPUT
 	if !ispath(Output_dir) mkpath(Output_dir); end
 
@@ -149,12 +150,6 @@ function map_stack(InputDict::Dict, station::Tuple)
     timestamplist   = inFile["info/timestamplist"]
     close(inFile)
 
-    # time index to stack
-    if  InputDict["timeslice"] == false
-        timeslice=[1,length(timestamplist)]
-    else
-        timeslice = InputDict["timeslice"]
-    end
 
     # station pairs
     stn1 = station[1]
@@ -164,9 +159,6 @@ function map_stack(InputDict::Dict, station::Tuple)
     stnpair = stn1*"-"*stn2*"-"*comp
     stnpairrev = stn2*"-"*stn1*"-"*comp
 
-	# println(stnpair)
-	# println(stnpairrev)
-
     #show progress
     progid = findfirst(x -> x==station, InputDict["stapairlist"])
     if mod(progid, 500) == 0
@@ -174,7 +166,7 @@ function map_stack(InputDict::Dict, station::Tuple)
     end
 
     # output file name
-    foname     = InputDict["fodir"]*"/stack_$(stn1)-$(stn2)-$(comp).jld2"
+    foname = InputDict["fodir"]*"/stack_$(stn1)-$(stn2)-$(comp).jld2"
 
     # time lags for xcorr
     lags = -maxlag:1/fs:maxlag
@@ -188,19 +180,30 @@ function map_stack(InputDict::Dict, station::Tuple)
 		return nothing
 	end
 
+	# intitialize time array
+	xcorr_temp.t = Array{Float64, 1}(undef, 0)
+
 	# compute stack
-    tscount = 0
 	all_full_stnkeywithcha = String[]
 
-    for (titer, time) in enumerate(timestamplist[timeslice[1]:timeslice[2]])
+    for (titer, tstamp) in enumerate(timestamplist)
+
+		y1, jd1 = parse.(Int64, split(tstamp, ".")[1:2])
+	    m1, d1 = j2md(y1,jd1)
+		datetime_tt = DateTime(y1, m1, d1)
+
+		if  starttime > datetime_tt || endtime < datetime_tt
+			continue;
+		end
+
 		if stackmode == "selective" || stackmode == "hash"
 			# initialize removal fraction output
 	        rmList = zeros(Float64, Nfreqband)
 			rmList .= NaN
 	    end
 
-        f_cur = jldopen(basefiname*".$time.jld2")
-        full_stnkeys = try keys(f_cur[time]) catch; continue; end
+        f_cur = jldopen(basefiname*".$(tstamp).jld2")
+        full_stnkeys = try keys(f_cur[tstamp]) catch; continue; end
 		# reformat full_stnkeys to stack group name format
 		nochan_stnkeys = String[]
 
@@ -215,10 +218,6 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 		if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
 
-            # # declare
-            # xcorr = CorrData()
-            # ref   = CorrData()
-
             if reference != false
 				# read curent and reference
                 if stnpair ∈ nochan_stnkeys
@@ -230,7 +229,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 				fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
 				fullstnpair = full_stnkeys[fullstnpair_id]
                 xcorr = try
-					f_cur["$time/$fullstnpair"]
+					f_cur["$(tstamp)/$fullstnpair"]
 				catch
 					println("current not found. make reference = false")
 					reference = false
@@ -265,7 +264,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 				fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
 				fullstnpair = full_stnkeys[fullstnpair_id]
-                xcorr = f_cur["$time/$fullstnpair"]
+                xcorr = f_cur["$(tstamp)/$fullstnpair"]
 				full_stnkeywithcha = fullstnpair
 
             end
@@ -333,7 +332,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 					hashstack!(xcorr_ifreq, ref_ifreq,
 						max_num_substack 		= 1e3,
-						cc_substack_threshold 	= 0.3,
+						cc_substack_threshold 	= -1.0,
 						SNR_threshold 			= 0.0,
 						output_stats = true, # if output status hdf5 file to check the process
 						output_stats_dir = statsdir, # directory of output status hdf5 file to check the process
@@ -356,14 +355,8 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 			end
 
-			tscount += 1
-
         else
-            # this station pair does not exist in this time stamp
-            # xcorr = CorrData()
-            # xcorr.fs = fs
-            # xcorr.maxlag = trunc(Int, Nmaxlag)
-            # xcorr.corr = zeros(trunc(Int, Nmaxlag),1)
+
 			stacked_ifreq_cc .= NaN
 			full_stnkeywithcha = ""
         end
@@ -375,43 +368,36 @@ function map_stack(InputDict::Dict, station::Tuple)
 		wtcorr_reshaped = zeros(Float32, Nmaxlag, 1,Nfreqband)
 		for ifreq = 1:Nfreqband
 	        norm_factor = maximum(abs.(stacked_ifreq_cc[:, ifreq]), dims=1)
-			if iszero(norm_factor)  #to avoid deviding by zero
+			if iszero(norm_factor) || isnan(norm_factor)
 				# this time is filled by zero; fill corr with NaN
 				stacked_ifreq_cc[:, ifreq] .= NaN
 				stacked_tr = stacked_ifreq_cc[:, ifreq]
-				#xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
 	        elseif IsNormalizedampperUnit
-	            #xcorr_temp.corr = hcat(xcorr_temp.corr, (xcorr.corr[:, 1]./ norm_factor))
 				stacked_tr = stacked_ifreq_cc[:, ifreq] ./ norm_factor
 	        else
-	            #xcorr_temp.corr = hcat(xcorr_temp.corr, xcorr.corr[:, 1])
 				stacked_tr = stacked_ifreq_cc[:, ifreq]
 	        end
 			wtcorr_reshaped[:, 1, ifreq] = reshape(stacked_tr, length(stacked_ifreq_cc[:, ifreq]), 1, 1)
 		end
+
+		# append corr with freqband at this timestamp
 		xcorr_temp.misc["wtcorr"] = cat(xcorr_temp.misc["wtcorr"],
 											wtcorr_reshaped, dims=2)
 
+		# append datetime in unixtime
+		push!(xcorr_temp.t, d2u(datetime_tt))
 		push!(all_full_stnkeywithcha, full_stnkeywithcha)
 
 		# output selective removal fraction
 		if (stackmode == "selective") && InputDict["IsOutputRemovalFrac"]
 			#output removal fraction on this channel
-			#println(rmList)
-			# if isempty(rmList)
-			# 	rmList .= NaN
-			# end
 
 			if stnpair ∈ nochan_stnkeys || stnpairrev ∈ nochan_stnkeys
-				fname_out = join([time, stnpair, "selectiveremovalfraction","dat"], '.')
+				fname_out = join([tstamp, stnpair, "selectiveremovalfraction","dat"], '.')
 			else
 				continue;
 			end
 
-			# y, jd = parse.(Int64, split(time, ".")[1:2])
-			# tstamp_fname = replace(tstamp, ":" => "-")
-			# fodirtemp = split(basefiname, "/")
-			# fodir = join(fodirtemp[1:end-2], "/")*"/selectiveremoval_fraction"
 			fodir = InputDict["Output_dir"]*"/removal_fraction"
 			mkpath(fodir)
 			fopath = fodir*"/"*fname_out
@@ -426,7 +412,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 
 
-	if tscount == 0
+	if isempty(xcorr_temp.t)
 		#no data for this station pair
 		#println("debug: nostationpair")
 		return nothing
@@ -444,45 +430,80 @@ function map_stack(InputDict::Dict, station::Tuple)
     end
 
     T = []
-    icount=1
-    while icount <= length(xcorr_temp.misc["wtcorr"][1, :, 1])-unitnumperstack+1
 
-        it = icount
-        et = icount + unitnumperstack - 1
+	datetime_unittime = Dates.Second(timeunit)
+	buffer_timewindow = 1.0 # [s]: shift time window backward to avoid including timestamp at right edge
+	# initialize starttime
+	twin_left  = starttime
+	twin_right = twin_left + unitnumperstack*datetime_unittime
 
-        # stack over unitnumperstack
-		manup_ifreq_cc = zeros(Float32, Nmaxlag, Nfreqband)
+	icount = 0
+	maxcount = 1e5
+
+	while true
+        #check if the window boundary is within start and end datetime.
+		if twin_right > endtime
+			# time window is outside of computed cc time
+			break;
+		end
+
+		#find timestamp within time window
+		datetime_list = u2d.(xcorr_temp)
+		tind = findall(x -> twin_left-Second(buffer_timewindow) <= x &&
+			 x < twin_right - Second(buffer_timewindow), datetime_list)
+
+		if isempty(tind)
+			# there is no time window within xcorr_temp. fill nan and slide to next time window.
+			manip_nan_cc_reshaped = zeros(Nmaxlag, 1, Nfreqband) .* NaN
+			xcorr_all.misc["wtcorr"] = cat(xcorr_all.misc["wtcorr"], manip_nan_cc_reshaped, dims=2)
+			push!(T, (datetime2unix(twin_left) + datetime2unix(twin_right))/2)
+
+			twin_left  = twin_right - overlapperstack*datetime_unittime
+			twin_right = twin_left + unitnumperstack*datetime_unittime
+			icount += 1
+			if icount >= maxcount
+				error("manipulate loop reaches limit $(maxcount). Please check overlapperstack, unitnumperstack, etc.")
+			end
+			continue;
+		end
+
+	 	manip_all_cc = zeros(Float32, Nmaxlag, Nfreqband)
+		manip_temp_cc = @view xcorr_temp.corr[:, tind, :]
 
 		for ifreq = 1:Nfreqband
-			xcorrstack = zeros(Nmaxlag)
+			manip_ifreq_cc = @view manip_temp_cc[:, :, ifreq]
 			Nstack = 0
-	        for ind = it:et
-				if !any(isnan.(xcorr_temp.misc["wtcorr"][:, ind, ifreq])) && !all(iszero.(xcorr_temp.misc["wtcorr"][:, ind, ifreq]))
-					xcorrstack .+= xcorr_temp.misc["wtcorr"][:, ind, ifreq]
+			# stack with each freqband
+			manip_unitstacked_cc = zeros(Float32, Nmaxlag)
+			for ii = 1:size(manip_ifreq_cc, 2)
+				tr = manip_ifreq_cc[:,ii]
+				if !any(isnan.(tr)) && !all(iszero.(tr))
+					manip_unitstacked_cc .+= manip_ifreq_cc[:,ii]
 					Nstack += 1
-	           	else
-				   	#println("Nan or all zero found in corr. skip this unit time")
-		   		end
-	        end
+				end
+			end
 
 			if Nstack == 0
-				manup_ifreq_cc[:, ifreq] = zeros(Nmaxlag, 1).*NaN
+				manip_all_cc[:, ifreq] = zeros(Nmaxlag).*NaN
 			else
-				manup_ifreq_cc[:, ifreq] = xcorrstack ./ Nstack
+				manip_all_cc[:, ifreq] = manip_unitstacked_cc ./ Nstack
 			end
 		end
 
-		manupcorr_reshaped = reshape(manup_ifreq_cc, Nmaxlag, 1, Nfreqband)
-		xcorr_all.misc["wtcorr"] = cat(xcorr_all.misc["wtcorr"], manupcorr_reshaped, dims=2)
-        #xcorr_all.corr = hcat(xcorr_all.corr, xcorrstack)
+		manip_all_cc_reshaped = reshape(manip_all_cc, Nmaxlag, 1, Nfreqband)
+		xcorr_all.misc["wtcorr"] = cat(xcorr_all.misc["wtcorr"], manip_all_cc_reshaped, dims=2)
+		push!(T, (datetime2unix(twin_left) + datetime2unix(twin_right))/2)
 
-        t1 = timestamplist[it]
-        t2 = timestamplist[et]
-        push!(T, get_midtime(t1, t2))
-        #println(timestamp(get_midtime(t1, t2)))
-        # slide with overlap
-        icount += unitnumperstack - overlapperstack
-    end
+		# slide time window with overlap
+		twin_left  = twin_right - overlapperstack*datetime_unittime
+		twin_right = twin_left + unitnumperstack*datetime_unittime
+
+		icount += 1
+		if icount >= maxcount
+			error("manipulate loop reaches limit $(maxcount). Please check overlapperstack, unitnumperstack, etc.")
+		end
+	end
+
 
 	xcorr_all.misc["T"] = T
 	xcorr_all.misc["channelpair"] = all_full_stnkeywithcha
@@ -514,7 +535,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 		# ORCA.restart_server()
 		# ORCA.savefig(p, figname, format=figfmt)
 		# println("test save data")
-		if tscount==0 println("No cross-correlations to plot. Skip."); end
+		if isempty(xcorr_temp.t); println("No cross-correlations to plot. Skip."); end
 		Plots.pyplot()
 
 		for ifreq = 1:Nfreqband
@@ -522,20 +543,30 @@ function map_stack(InputDict::Dict, station::Tuple)
 			freqbandmax = xcorr_all.misc["freqband"][ifreq+1]
 
 			xcorrplot = xcorr_all.misc["wtcorr"][:,:,ifreq]
+
+			# normalize each timestamp by its maximum value
+			for j = 1:size(xcorrplot, 2)
+				norm_factor = maximum(abs.(xcorrplot[:, j]))
+				if iszero(norm_factor) || isnan(norm_factor)
+					# this time is filled by zero; fill corr with NaN
+					xcorrplot[:, j] .= NaN
+				else
+					xcorrplot[:, j] ./= norm_factor
+				end
+			end
+
 			p = Plots.heatmap(lags, timestamp.(xcorr_all.misc["T"]),transpose(xcorrplot), c=:balance)
 			p = Plots.plot!(size=(800,600),
 					  title=@sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2)),
 					  xlabel = "Time lag [s]")
 
-			# figdirtemp = split(basefiname, "/")
-			# figdir = join(figdirtemp[1:end-2], "/")*"/fig"
 			figdir = InputDict["Output_dir"]*"/fig"
 			if !ispath(figdir) mkpath(figdir); end
-			#figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)_$(timestamplist[1])."*figfmt
 			strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
 			figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-"*strfreq*"."*figfmt
 			println(figname)
 			Plots.savefig(p, figname)
+
 			# save heatmap matrix for replot
 			figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-"*strfreq*".jld2"
 			FileIO.save(figjldname, Dict("heatmap" => xcorrplot, "T" => xcorr_all.misc["T"]))
@@ -546,20 +577,20 @@ function map_stack(InputDict::Dict, station::Tuple)
     return nothing
 end
 
-"""
-get_midtime(t1::String, t2::String)
-return average unix time between t1(ex. "2001.147.T00:00:00") and t2.
-"""
-function get_midtime(t1::String, t2::String)
-    y1, jd1 = parse.(Int64, split(t1, ".")[1:2])
-    m1, d1 = j2md(y1,jd1)
-    time_init=DateTime(y1, m1, d1)
-
-    y2, jd2 = parse.(Int64, split(t2, ".")[1:2])
-    m2, d2 = j2md(y2,jd2)
-    time_end=DateTime(y2, m2, d2)
-    return (datetime2unix(time_init) + datetime2unix(time_end))/2
-end
+# """
+# get_midtime(t1::String, t2::String)
+# return average unix time between t1(ex. "2001.147.T00:00:00") and t2.
+# """
+# function get_midtime(t1::String, t2::String)
+#     y1, jd1 = parse.(Int64, split(t1, ".")[1:2])
+#     m1, d1 = j2md(y1,jd1)
+#     time_init=DateTime(y1, m1, d1)
+#
+#     y2, jd2 = parse.(Int64, split(t2, ".")[1:2])
+#     m2, d2 = j2md(y2,jd2)
+#     time_end=DateTime(y2, m2, d2)
+#     return (datetime2unix(time_init) + datetime2unix(time_end))/2
+# end
 
 
 """
@@ -612,18 +643,17 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 				ref_stnpair = stnpairrev
 			end
 
-			if stnpair ∈ nochan_stnkeys
-				fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
-				fullstnpair = full_stnkeys[fullstnpair_id]
-				xcorr = f_cur["$time/$fullstnpair"]
-			end
+			fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
+			fullstnpair = full_stnkeys[fullstnpair_id]
+			xcorr = f_cur["$time/$fullstnpair"]
+
 			# store meta data to xcorr_temp
 			xcorr.corr , nanzerocol = remove_nanandzerocol(xcorr.corr)
 			xcorr.t = xcorr.t[nanzerocol]
 
 			if isempty(xcorr.corr) continue; end
+
 			if filter != false
-				xcorr.corr    = bandpass(xcorr.corr, filter[1], filter[2], xcorr.fs, corners=4, zerophase=false)
 				xcorr.freqmin = filter[1]
 				xcorr.freqmax = filter[2]
 			end
@@ -632,6 +662,7 @@ function get_metadata(timestamplist::Array, timeslice::Array, basefiname::String
 
 			xcorr_temp = copy_without_wtcorr(xcorr)
 			xcorr_temp.corr = Array{Float32, 2}(undef, Nmaxlag, 0)
+			xcorr_temp.t = Array{Float64, 1}(undef, 0)
 			xcorr_temp.misc["wtcorr"] = Array{Float32, 3}(undef, Nmaxlag, 0, Nfreqband)
 			return xcorr_temp
 		end
