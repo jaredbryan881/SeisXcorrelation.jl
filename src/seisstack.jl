@@ -367,7 +367,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 		wtcorr_reshaped = zeros(Float32, Nmaxlag, 1,Nfreqband)
 		for ifreq = 1:Nfreqband
-	        norm_factor = maximum(abs.(stacked_ifreq_cc[:, ifreq]), dims=1)
+	        norm_factor = maximum(abs.(stacked_ifreq_cc[:, ifreq]), dims=1)[1]
 			if iszero(norm_factor) || isnan(norm_factor)
 				# this time is filled by zero; fill corr with NaN
 				stacked_ifreq_cc[:, ifreq] .= NaN
@@ -546,7 +546,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 			# normalize each timestamp by its maximum value
 			for j = 1:size(xcorrplot, 2)
-				norm_factor = maximum(abs.(xcorrplot[:, j]))
+				norm_factor = maximum(abs.(xcorrplot[:, j]))[1]
 				if iszero(norm_factor) || isnan(norm_factor)
 					# this time is filled by zero; fill corr with NaN
 					xcorrplot[:, j] .= NaN
