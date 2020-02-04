@@ -49,6 +49,7 @@ function seisstack(InputDict::Dict)
 	InputDict["referencepath"] = reference
 
     stapair = Array{String, 2}(undef, 3, 0)
+
     try
         f_ref = jldopen(reference, "r")
         pairs = split.(keys(f_ref), "-")
@@ -70,16 +71,34 @@ function seisstack(InputDict::Dict)
         corrtype   = InputDict["corrtype"]
 
         if any(occursin.("acorr", corrtype))
-            stapair = hcat(stapair, corrsta["acorr"])
+			corrlist = corrsta["acorr"]
+			for i = 1:size(corrlist, 2)
+				pair1 = join(split.(corrlist, ".")[1,:][i][1:2], ".")
+				pair2 = join(split.(corrlist, ".")[2,:][i][1:2], ".")
+				comp = join((split.(corrlist, ".")[1,:][i][4][end], split.(corrlist, ".")[2,:][i][4][end]))
+        		stapair = hcat(stapair, permutedims(hcat(pair1, pair2, comp)))
+			end
         end
 
         if any(occursin.("xcorr", corrtype))
-            stapair = hcat(stapair, corrsta["xcorr"])
-        end
+			corrlist = corrsta["xcorr"]
+			for i = 1:size(corrlist, 2)
+				pair1 = join(split.(corrlist, ".")[1,:][i][1:2], ".")
+				pair2 = join(split.(corrlist, ".")[2,:][i][1:2], ".")
+				comp = join((split.(corrlist, ".")[1,:][i][4][end], split.(corrlist, ".")[2,:][i][4][end]))
+        		stapair = hcat(stapair, permutedims(hcat(pair1, pair2, comp)))
+			end
+		end
 
         if any(occursin.("xcorrchan", corrtype))
-            stapair = hcat(stapair, corrsta["xcorrchan"])
-        end
+			corrlist = corrsta["xcorrchan"]
+			for i = 1:size(corrlist, 2)
+				pair1 = join(split.(corrlist, ".")[1,:][i][1:2], ".")
+				pair2 = join(split.(corrlist, ".")[2,:][i][1:2], ".")
+				comp = join((split.(corrlist, ".")[1,:][i][4][end], split.(corrlist, ".")[2,:][i][4][end]))
+        		stapair = hcat(stapair, permutedims(hcat(pair1, pair2, comp)))
+			end
+		end
     end
 
 	fodir = Output_dir*"/stack"
@@ -202,7 +221,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 			rmList .= NaN
 	    end
 
-        f_cur = jldopen(basefiname*".$(tstamp).jld2")
+		f_cur = jldopen(basefiname*".$(tstamp).jld2")
         full_stnkeys = try keys(f_cur[tstamp]) catch; continue; end
 		# reformat full_stnkeys to stack group name format
 		nochan_stnkeys = String[]
@@ -231,8 +250,8 @@ function map_stack(InputDict::Dict, station::Tuple)
                 xcorr = try
 					f_cur["$(tstamp)/$fullstnpair"]
 				catch
-					println("current not found. make reference = false")
-					reference = false
+					println("current not found. skip this timestep")
+					continue;
 				end
 
 				full_stnkeywithcha = fullstnpair
@@ -244,7 +263,6 @@ function map_stack(InputDict::Dict, station::Tuple)
 				catch
 					println("reference not found. make reference = false")
 					reference = false
-
 				end
                 close(f_ref)
 
@@ -264,9 +282,13 @@ function map_stack(InputDict::Dict, station::Tuple)
 
 				fullstnpair_id = findfirst(x -> x==ref_stnpair, nochan_stnkeys)
 				fullstnpair = full_stnkeys[fullstnpair_id]
-                xcorr = f_cur["$(tstamp)/$fullstnpair"]
+				xcorr = try
+					f_cur["$(tstamp)/$fullstnpair"]
+				catch
+					println("current not found. skip this timestep")
+					continue;
+				end
 				full_stnkeywithcha = fullstnpair
-
             end
 
 			nWins = length(xcorr.corr[1,:])
@@ -357,14 +379,15 @@ function map_stack(InputDict::Dict, station::Tuple)
 
         else
 
-			stacked_ifreq_cc .= NaN
-			full_stnkeywithcha = ""
+			# stacked_ifreq_cc .= NaN
+			# full_stnkeywithcha = ""
+			continue;
+
         end
 
         close(f_cur)
 
 		# cat to all daily stack xcorr_temp
-
 		wtcorr_reshaped = zeros(Float32, Nmaxlag, 1,Nfreqband)
 		for ifreq = 1:Nfreqband
 	        norm_factor = maximum(abs.(stacked_ifreq_cc[:, ifreq]), dims=1)[1]
@@ -621,7 +644,9 @@ function get_metadata(timestamplist::Array, starttime::DateTime, endtime::DateTi
 		end
 
 		f_cur = jldopen(basefiname*".$(tstamp).jld2")
-		full_stnkeys = keys(f_cur[tstamp])
+
+		full_stnkeys = try keys(f_cur[tstamp]) catch; continue; end
+
 		# reformat full_stnkeys to stack group name format
 		nochan_stnkeys = String[]
 
