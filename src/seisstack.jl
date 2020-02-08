@@ -2,7 +2,7 @@ include("utils.jl")
 include("stacking.jl")
 include("reference.jl")
 
-using Statistics, Plots, FileIO, Printf, HashStack
+using Statistics, PyPlot, Plots, FileIO, Printf #, HashStack
 export seisstack
 
 """
