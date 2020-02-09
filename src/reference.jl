@@ -621,6 +621,75 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 				xcorr_ifreq = copy_without_wtcorr(xcorr)
 				xcorr_ifreq.corr = xcorr.misc["wtcorr"][:,:,ifreq]
 
+				# TODO: implement slicing coda part
+				#===
+				# Draft code below. It will be made as function in util.jl
+
+				min_ballistic_twin = InputDict["min_ballistic_twin"]
+				dtt_v = InputDict["dtt_v"]
+				max_coda_length = InputDict["max_coda_length"]
+				tr = zeros(Float32, size(xcorr_ifreq.corr, 1))
+				Ntimelag = length(tr/2)
+				centerid = trunc(Int, Ntimelag/2)
+
+				# minimum ballistic time window
+	            min_ballistic_width = min_ballistic_twin * xcorr_ifreq.fs
+	            minbal_window_left =  round(Int, centerid - min_ballistic_width)
+	            minbal_window_right =  round(Int, centerid + min_ballistic_width)
+	            minbal_window = vcat(collect(1:minbal_window_left), collect(window_right:Ntimelag))
+
+	            if round(Int, xcorr_ifreq.fs * xcorr_ifreq.dist / dtt_v) < 1
+	                # contains full ballistic part
+	                coda_window_left =  round(Int, centerid - max_coda_length * xcorr_ifreq.fs)
+	                coda_window_right =  round(Int, centerid + max_coda_length * xcorr_ifreq.fs)
+	                window = intersect(collect(coda_window_left:coda_window_right),
+	                                    minbal_window)
+	            else
+	                # remove ballistic wave part
+	                coda_window_left =  round(Int, centerid - max_coda_length * xcorr_ifreq.fs) #[km] / [km/s]
+	                coda_window_right =  round(Int, centerid + max_coda_length * xcorr_ifreq.fs) #[km] / [km/s]
+	                ba_window_left = round(Int, centerid - xcorr_ifreq.fs * xcorr_ifreq.dist / dtt_v) #[km] / [km/s]
+	                ba_window_right = round(Int, centerid + xcorr_ifreq.fs * xcorr_ifreq.dist / dtt_v) #[km] / [km/s]
+
+	                if ba_window_left < 1
+	                    ba_window_left = 1
+	                end
+
+	                if coda_window_left < 1
+	                    coda_window_left = 1
+	                end
+
+	                if ba_window_right > Ntimelag
+	                    ba_window_right = Ntimelag
+	                end
+
+	                if coda_window_right > Ntimelag
+	                    coda_window_right = Ntimelag
+	                end
+
+	                window_left  = collect(coda_window_left:ba_window_left)
+	                window_right = collect(ba_window_right:coda_window_right)
+	                window = intersect(vcat(window_left, window_right),
+	                                     minbal_window)
+	                # check window
+	                if minbal_window_left < minimum(window) || minbal_window_right > maximum(window)
+	                    @warn("minimum ballistic window could be too large so that there is no stretching window.
+	                        check balance of max_coda_length, attenuation_minthreshold and minimum ballistic window ")
+	                end
+
+	                if ba_window_left < coda_window_left || ba_window_right > coda_window_right || isempty(window)
+	                    #this stationpare has no coda.
+	                    continue;
+	                end
+	            end
+
+				for it = 1:size(xcorr_ifreq.corr, 2)
+					tr[window] = xcorr_ifreq.corr[window, it]
+					xcorr_ifreq.corr[:, it] = tr
+				end
+
+				===#
+
 				robuststack!(xcorr_ifreq)
 
 				stacked_ifreq_cc[:, ifreq] = xcorr_ifreq.corr
@@ -632,7 +701,6 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 
 				# if there is no selected stack, skip this pair at this time
 				if isempty(xcorr_ifreq.corr) || all(isnan.(xcorr_ifreq.corr)) continue; end
-
 
 			end
 
