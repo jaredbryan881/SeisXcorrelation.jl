@@ -586,12 +586,12 @@ function map_stack(InputDict::Dict, station::Tuple)
 			figdir = InputDict["Output_dir"]*"/fig"
 			if !ispath(figdir) mkpath(figdir); end
 			strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
-			figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-"*strfreq*"."*figfmt
+			figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-$(comp)-"*strfreq*"."*figfmt
 			println(figname)
 			Plots.savefig(p, figname)
 
 			# save heatmap matrix for replot
-			figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-"*strfreq*".jld2"
+			figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-$(comp)-"*strfreq*".jld2"
 			FileIO.save(figjldname, Dict("heatmap" => xcorrplot, "T" => xcorr_all.misc["T"]))
 		end
     end
