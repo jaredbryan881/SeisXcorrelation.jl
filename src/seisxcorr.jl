@@ -1,5 +1,6 @@
 export seisxcorrelation, map_xcorr, map_xcorr_highorder
 
+include("utils.jl")
 include("pairing.jl")
 
 """
@@ -75,6 +76,14 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     # stacking parameters
     stack      = InputDict["allstack"]
     max_std    = InputDict["max_std"]
+
+
+    freqband = InputDict["freqband"]
+    if typeof(freqband) == Int
+        Nfreqband = freqband
+    else
+        Nfreqband = length(freqband)-1
+    end
 
     # dictionary to cache FFTs
     FFTDict = Dict{String, FFTData}()
@@ -317,11 +326,17 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 if stack==true stack!(xcorr, allstack=true) end
 
                 #DEBUG:
-                if occursin("2004.54", tstamp) && ct=="acorr"
-                    println("XCORR:")
-                    println(xcorr)
-		            #continue
-                end
+                # if occursin("2004.54", tstamp) && ct=="acorr"
+                #     println("XCORR:")
+                #     println(xcorr)
+		        #     #continue
+                # end
+
+                #===
+                2020.02.13 Apply wavelet transform and append wtcorr to xcorr.misc
+                This inclease the strage use for cc, but will optimize cpu speed
+                ===#
+    			append_wtcorr!(xcorr, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
 
                 push!(varnamelist, varname)
                 push!(xcorrlist, xcorr)
@@ -349,17 +364,17 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     end
 
     #DEBUG
-    if occursin("2003.96.", tstamp)
-        @show stlist
-        @show time_unit
-        @show tserrorList
-        @show "xcorrlist"
-        for (i, varname) in enumerate(varnamelist)
-            @show varname
-            @show xcorrlist[i]
-            @show xcorrlist[i].t
-        end
-    end
+    # if occursin("2003.96.", tstamp)
+    #     @show stlist
+    #     @show time_unit
+    #     @show tserrorList
+    #     @show "xcorrlist"
+    #     for (i, varname) in enumerate(varnamelist)
+    #         @show varname
+    #         @show xcorrlist[i]
+    #         @show xcorrlist[i].t
+    #     end
+    # end
 
     #jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
     jldopen("$basefoname.$tstamp.jld2", true, true, true, IOStream) do outFile

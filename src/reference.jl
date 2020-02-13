@@ -306,8 +306,8 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 			# figdirtemp = split(basefiname, "/")
 			#figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
 			#figdir = InputDict["Output_dir"]
-			figdir = ""
-			append_wtcorr!(xcorr, freqband, figdir=figdir, α0 = InputDict["α0"], αmax = InputDict["αmax"])
+			# figdir = ""
+			# append_wtcorr!(xcorr, freqband, figdir=figdir, α0 = InputDict["α0"], αmax = InputDict["αmax"])
 
 			# load reference
 			if stackmode=="selective"
@@ -604,9 +604,8 @@ function map_robustreference(tstamp::String, InputDict::Dict, corrname::String)
 			figdirtemp = split(basefiname, "/")
 			#figdir = join(figdirtemp[1:end-2], "/")*"/fig_wtcorr"
 			#figdir = InputDict["Output_dir"]
-			figdir = ""
-
-			append_wtcorr!(xcorr, freqband, figdir=figdir, α0 = InputDict["α0"], αmax = InputDict["αmax"])
+			# figdir = ""
+			# append_wtcorr!(xcorr, freqband, figdir=figdir, α0 = InputDict["α0"], αmax = InputDict["αmax"])
 
 			# @show any(isnan.(xcorr.corr), dims=1)
 			# debugxcorr = deepcopy(xcorr)

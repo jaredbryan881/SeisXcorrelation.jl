@@ -304,7 +304,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 				xcorr.freqmax = InputDict["filter"][2]
 			end
 
-			append_wtcorr!(xcorr, freqband, α0 = InputDict["α0"], αmax = InputDict["αmax"])
+			#append_wtcorr!(xcorr, freqband, α0 = InputDict["α0"], αmax = InputDict["αmax"])
 
 			# stack shotttime-window cc per unit time
 			for ifreq = 1:Nfreqband
@@ -688,7 +688,7 @@ function get_metadata(timestamplist::Array, starttime::DateTime, endtime::DateTi
 				xcorr.freqmax = filter[2]
 			end
 
-			append_wtcorr!(xcorr, freqband)
+			#append_wtcorr!(xcorr, freqband)
 
 			xcorr_temp = copy_without_wtcorr(xcorr)
 			xcorr_temp.corr = Array{Float32, 2}(undef, Nmaxlag, 0)
