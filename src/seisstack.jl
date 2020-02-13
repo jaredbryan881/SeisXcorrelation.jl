@@ -227,9 +227,11 @@ function map_stack(InputDict::Dict, station::Tuple)
 		nochan_stnkeys = String[]
 
 		for k = 1:length(full_stnkeys)
+			# TODO: use CorrData.name and CorrData.comp
 			cur_stn1 = join(split(full_stnkeys[k], ".")[1:2], ".")
 			cur_stn2 = join(split(full_stnkeys[k], ".")[5:6], ".")
-			cur_comp = comp
+			#cur_comp = comp
+			cur_comp = join([split(full_stnkeys[k], ".")[4][3], split(full_stnkeys[k], ".")[8][3]])
 			push!(nochan_stnkeys, cur_stn1*"-"*cur_stn2*"-"*cur_comp)
 		end
 
