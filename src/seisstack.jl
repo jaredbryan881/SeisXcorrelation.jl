@@ -585,7 +585,7 @@ function map_stack(InputDict::Dict, station::Tuple)
 					  title=@sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2)),
 					  xlabel = "Time lag [s]")
 
-			figdir = InputDict["Output_dir"]*"/fig"
+			figdir = InputDict["Output_dir"]*"/fig_stackedcc"
 			if !ispath(figdir) mkpath(figdir); end
 			strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
 			figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-$(comp)-"*strfreq*"."*figfmt
