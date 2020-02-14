@@ -201,7 +201,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
             ct = get_corrtype([stn1, stn2])
 
             # autocorrelation
-            if (ct=="acorr") && ("acorr" in corrtype)
+            if (ct=="acorr-achan") && ("acorr-achan" in corrtype)
                # set the stn2 FFT to the already computed FFT for stn1
                FFT2 = deepcopy(FFT1)
 

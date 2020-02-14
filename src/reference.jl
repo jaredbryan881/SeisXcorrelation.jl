@@ -35,7 +35,7 @@ function compute_reference_xcorr(InputDict::Dict)
 
 
 	# 1. make initial reference by linear stack
-	ref_dict_dailystack = Dict()
+	ref_dict_unitstack = Dict()
 
 	freqband = InputDict["freqband"]
 
@@ -68,33 +68,34 @@ function compute_reference_xcorr(InputDict::Dict)
 				stnkey = xcorr_temp.name
 				stn1 = join(split(stnkey, ".")[1:2], ".")
 				stn2 = join(split(stnkey, ".")[5:6], ".")
-				comp = xcorr_temp.comp
-				nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
-				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+				comp1 = xcorr_temp.comp[1]
+				comp2 = xcorr_temp.comp[2]
+				nochan_stnpair = stn1*"-"*stn2*"-"*comp1*comp2
+				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp2*comp1
 
 				T = size(xcorr_temp.corr, 1)
 				wtcorr_reshaped = reshape(xcorr_temp.corr, T, 1, Nfreqband)
 
-				if haskey(ref_dict_dailystack, nochan_stnpair)
+				if haskey(ref_dict_unitstack, nochan_stnpair)
 					if !isempty(xcorr_temp.corr)
-	 					# ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+	 					# ref_dict_unitstack[nochan_stnpair].corr = hcat(ref_dict_unitstack[nochan_stnpair].corr,
 						#  ref_dicts[i][stnkey].corr)
-						ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] =
-						cat(ref_dict_dailystack[nochan_stnpair].misc["wtcorr"],
+						ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] =
+						cat(ref_dict_unitstack[nochan_stnpair].misc["wtcorr"],
 							wtcorr_reshaped, dims=2)
 					end
-		 		elseif haskey(ref_dict_dailystack, nochan_stnpairrev)
+		 		elseif haskey(ref_dict_unitstack, nochan_stnpairrev)
 					if !isempty(xcorr_temp.corr)
-						# ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+						# ref_dict_unitstack[nochan_stnpair].corr = hcat(ref_dict_unitstack[nochan_stnpair].corr,
 						#  reverse(ref_dicts[i][stnkey].corr, dims=1))
-						ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] =
-						cat(ref_dict_dailystack[nochan_stnpair].misc["wtcorr"],
+						ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] =
+						cat(ref_dict_unitstack[nochan_stnpair].misc["wtcorr"],
 							 reverse(wtcorr_reshaped, dims=1), dims=2)
 					end
 				else
 					# add new station pair into ref_dict_out with stnpair (reversed stnpair in other time steps is taken into account above.)
-					ref_dict_dailystack[nochan_stnpair] = deepcopy(xcorr_temp)
-					ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] = wtcorr_reshaped
+					ref_dict_unitstack[nochan_stnpair] = deepcopy(xcorr_temp)
+					ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] = wtcorr_reshaped
 				end
 			end
 		end
@@ -104,22 +105,22 @@ function compute_reference_xcorr(InputDict::Dict)
 	# DEBUG:
 	@show refname
 	f_out = jldopen(refname, "w")
-	for stnpair in keys(ref_dict_dailystack)
+	for stnpair in keys(ref_dict_unitstack)
 		# #Debug
-		#println(ref_dict_dailystack[stnpair])
-		#@show any(isnan.(ref_dict_dailystack[stnpair].corr), dims=1)
+		#println(ref_dict_unitstack[stnpair])
+		#@show any(isnan.(ref_dict_unitstack[stnpair].corr), dims=1)
 		#@show any(isnan.(f_out[stnpair].corr), dims=1)
 		# save initial reference by linear stack
-		stacked_cc = copy_without_wtcorr(ref_dict_dailystack[stnpair])
+		stacked_cc = copy_without_wtcorr(ref_dict_unitstack[stnpair])
 		stacked_cc.corr = zeros(Float32, size(stacked_cc.corr, 1), Nfreqband)
-		xcorr_ifreq = copy_without_wtcorr(ref_dict_dailystack[stnpair])
+		xcorr_ifreq = copy_without_wtcorr(ref_dict_unitstack[stnpair])
 
 		for ifreq = 1:Nfreqband
-			xcorr_ifreq.corr = ref_dict_dailystack[stnpair].misc["wtcorr"][:,:,ifreq]
+			xcorr_ifreq.corr = ref_dict_unitstack[stnpair].misc["wtcorr"][:,:,ifreq]
 			stack!(xcorr_ifreq, allstack=true)
 			stacked_cc.corr[:, ifreq] = xcorr_ifreq.corr
 		end
-		# println(ref_dict_dailystack[stnpair])
+		# println(ref_dict_unitstack[stnpair])
 
 		f_out[stnpair] = stacked_cc
 
@@ -137,7 +138,7 @@ function compute_reference_xcorr(InputDict::Dict)
 	for riter = 1:InputDict["ref_iter"] # iterate over "ref_iter" when using selective ref
 		println("reference method=selective iterate:$riter")
 
-		ref_dict_dailystack = Dict()
+		ref_dict_unitstack = Dict()
 
 		for year = ref_styear:ref_etyear
 
@@ -159,33 +160,34 @@ function compute_reference_xcorr(InputDict::Dict)
 					stnkey = xcorr_temp.name
 					stn1 = join(split(stnkey, ".")[1:2], ".")
 					stn2 = join(split(stnkey, ".")[5:6], ".")
-					comp = xcorr_temp.comp
-					nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
-					nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+					comp1 = xcorr_temp.comp[1]
+					comp2 = xcorr_temp.comp[2]
+					nochan_stnpair = stn1*"-"*stn2*"-"*comp1*comp2
+					nochan_stnpairrev = stn2*"-"*stn1*"-"*comp2*comp1
 
 					T = size(xcorr_temp.corr, 1)
 					wtcorr_reshaped = reshape(xcorr_temp.corr, T, 1, Nfreqband)
 
-					if haskey(ref_dict_dailystack, nochan_stnpair)
+					if haskey(ref_dict_unitstack, nochan_stnpair)
 						if !isempty(xcorr_temp.corr)
-		 					# ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+		 					# ref_dict_unitstack[nochan_stnpair].corr = hcat(ref_dict_unitstack[nochan_stnpair].corr,
 							#  ref_dicts[i][stnkey].corr)
-							ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] =
-							cat(ref_dict_dailystack[nochan_stnpair].misc["wtcorr"],
+							ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] =
+							cat(ref_dict_unitstack[nochan_stnpair].misc["wtcorr"],
 								wtcorr_reshaped, dims=2)
 						end
-			 		elseif haskey(ref_dict_dailystack, nochan_stnpairrev)
+			 		elseif haskey(ref_dict_unitstack, nochan_stnpairrev)
 						if !isempty(xcorr_temp.corr)
-							# ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+							# ref_dict_unitstack[nochan_stnpair].corr = hcat(ref_dict_unitstack[nochan_stnpair].corr,
 							#  reverse(ref_dicts[i][stnkey].corr, dims=1))
-							ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] =
-							cat(ref_dict_dailystack[nochan_stnpair].misc["wtcorr"],
+							ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] =
+							cat(ref_dict_unitstack[nochan_stnpair].misc["wtcorr"],
 								 reverse(wtcorr_reshaped, dims=1), dims=2)
 						end
 					else
 						# add new station pair into ref_dict_out with stnpair (reversed stnpair in other time steps is taken into account above.)
-						ref_dict_dailystack[nochan_stnpair] = deepcopy(xcorr_temp)
-						ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] = wtcorr_reshaped
+						ref_dict_unitstack[nochan_stnpair] = deepcopy(xcorr_temp)
+						ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] = wtcorr_reshaped
 					end
 				end
 			end
@@ -199,24 +201,24 @@ function compute_reference_xcorr(InputDict::Dict)
 		mv(refname, oldrefname, force=true)
 		ref_in = jldopen(oldrefname, "r")
 		f_out = jldopen(refname, "w")
-		for stnpair in keys(ref_dict_dailystack)
+		for stnpair in keys(ref_dict_unitstack)
 			ref_old = ref_in[stnpair]
 
-			stacked_cc = copy_without_wtcorr(ref_dict_dailystack[stnpair])
+			stacked_cc = copy_without_wtcorr(ref_dict_unitstack[stnpair])
 			stacked_cc.corr = zeros(Float32, size(stacked_cc.corr, 1), Nfreqband)
-			xcorr_ifreq = copy_without_wtcorr(ref_dict_dailystack[stnpair])
+			xcorr_ifreq = copy_without_wtcorr(ref_dict_unitstack[stnpair])
 			ref_ifreq = copy_without_wtcorr(ref_old)
 
 			for ifreq = 1:Nfreqband
 
-				xcorr_ifreq.corr = ref_dict_dailystack[stnpair].misc["wtcorr"][:,:,ifreq]
+				xcorr_ifreq.corr = ref_dict_unitstack[stnpair].misc["wtcorr"][:,:,ifreq]
 				ref_ifreq.corr = reshape(ref_old.corr[:,ifreq], length(ref_old.corr[:,ifreq]), 1)
 
 				xcorr_ifreq = selective_stack(xcorr_ifreq, ref_ifreq, InputDict)[1]
 
 				stacked_cc.corr[:, ifreq] = xcorr_ifreq.corr
 			end
-			# println(ref_dict_dailystack[stnpair])
+			# println(ref_dict_unitstack[stnpair])
 
 			f_out[stnpair] = stacked_cc
 
@@ -315,9 +317,10 @@ function map_reference(tstamp::String, InputDict::Dict, corrname::String; stackm
 				stnkey = xcorr.name
 				stn1 = join(split(stnkey, ".")[1:2], ".")
 				stn2 = join(split(stnkey, ".")[5:6], ".")
-				comp = xcorr.comp
-				nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
-				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
+				comp1 = xcorr.comp[1]
+				comp2 = xcorr.comp[2]
+				nochan_stnpair = stn1*"-"*stn2*"-"*comp1*comp2
+				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp2*comp1
 
 				f_exref = jldopen(reference)
 
@@ -431,7 +434,7 @@ function robust_reference_xcorr(InputDict::Dict)
 	ref_etyear = Dates.Year(ref_et).value
 
 	# collect all references into one dictionary at first iteration
-	ref_dict_dailystack = Dict()
+	ref_dict_unitstack = Dict()
 
 	freqband = InputDict["freqband"]
 
@@ -464,33 +467,34 @@ function robust_reference_xcorr(InputDict::Dict)
 				stnkey = xcorr_temp.name
 				stn1 = join(split(stnkey, ".")[1:2], ".")
 				stn2 = join(split(stnkey, ".")[5:6], ".")
-				comp = xcorr_temp.comp
-				nochan_stnpair = stn1*"-"*stn2*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
-				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp # e.g. NC.PDR-NC.PHA-ZZ
-
+				comp1 = xcorr_temp.comp[1]
+				comp2 = xcorr_temp.comp[2]
+				nochan_stnpair = stn1*"-"*stn2*"-"*comp1*comp2
+				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp2*comp1
+				
 				T = size(xcorr_temp.corr, 1)
 				wtcorr_reshaped = reshape(xcorr_temp.corr, T, 1, Nfreqband)
 
-				if haskey(ref_dict_dailystack, nochan_stnpair)
+				if haskey(ref_dict_unitstack, nochan_stnpair)
 					if !isempty(xcorr_temp.corr)
-	 					# ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+	 					# ref_dict_unitstack[nochan_stnpair].corr = hcat(ref_dict_unitstack[nochan_stnpair].corr,
 						#  ref_dicts[i][stnkey].corr)
-						ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] =
-						cat(ref_dict_dailystack[nochan_stnpair].misc["wtcorr"],
+						ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] =
+						cat(ref_dict_unitstack[nochan_stnpair].misc["wtcorr"],
 							wtcorr_reshaped, dims=2)
 					end
-		 		elseif haskey(ref_dict_dailystack, nochan_stnpairrev)
+		 		elseif haskey(ref_dict_unitstack, nochan_stnpairrev)
 					if !isempty(xcorr_temp.corr)
-						# ref_dict_dailystack[nochan_stnpair].corr = hcat(ref_dict_dailystack[nochan_stnpair].corr,
+						# ref_dict_unitstack[nochan_stnpair].corr = hcat(ref_dict_unitstack[nochan_stnpair].corr,
 						#  reverse(ref_dicts[i][stnkey].corr, dims=1))
-						ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] =
-						cat(ref_dict_dailystack[nochan_stnpair].misc["wtcorr"],
+						ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] =
+						cat(ref_dict_unitstack[nochan_stnpair].misc["wtcorr"],
 							 reverse(wtcorr_reshaped, dims=1), dims=2)
 					end
 				else
 					# add new station pair into ref_dict_out with stnpair (reversed stnpair in other time steps is taken into account above.)
-					ref_dict_dailystack[nochan_stnpair] = deepcopy(xcorr_temp)
-					ref_dict_dailystack[nochan_stnpair].misc["wtcorr"] = wtcorr_reshaped
+					ref_dict_unitstack[nochan_stnpair] = deepcopy(xcorr_temp)
+					ref_dict_unitstack[nochan_stnpair].misc["wtcorr"] = wtcorr_reshaped
 				end
 			end
 		end
@@ -499,26 +503,26 @@ function robust_reference_xcorr(InputDict::Dict)
 
 	# save final reference (this works even if riter = 1)
 	f_out = jldopen(refname, "w")
-	for stnpair in keys(ref_dict_dailystack)
+	for stnpair in keys(ref_dict_unitstack)
 		# #Debug
-		#println(ref_dict_dailystack[stnpair])
-		#@show any(isnan.(ref_dict_dailystack[stnpair].corr), dims=1)
-		stacked_cc = copy_without_wtcorr(ref_dict_dailystack[stnpair])
+		#println(ref_dict_unitstack[stnpair])
+		#@show any(isnan.(ref_dict_unitstack[stnpair].corr), dims=1)
+		stacked_cc = copy_without_wtcorr(ref_dict_unitstack[stnpair])
 		stacked_cc.corr = zeros(Float32, size(stacked_cc.corr, 1), Nfreqband)
-		xcorr_ifreq = copy_without_wtcorr(ref_dict_dailystack[stnpair])
+		xcorr_ifreq = copy_without_wtcorr(ref_dict_unitstack[stnpair])
 
 
 		for ifreq = 1:Nfreqband
-			xcorr_ifreq.corr = ref_dict_dailystack[stnpair].misc["wtcorr"][:,:,ifreq]
+			xcorr_ifreq.corr = ref_dict_unitstack[stnpair].misc["wtcorr"][:,:,ifreq]
 			robuststack!(xcorr_ifreq)
 			stacked_cc.corr[:, ifreq] = xcorr_ifreq.corr
 		end
-		# println(ref_dict_dailystack[stnpair])
+		# println(ref_dict_unitstack[stnpair])
 
 		f_out[stnpair] = stacked_cc
 		#@show any(isnan.(f_out[stnpair].corr), dims=1)
 
-		# println(ref_dict_dailystack[stnpair])
+		# println(ref_dict_unitstack[stnpair])
 
 	end
 	close(f_out)
