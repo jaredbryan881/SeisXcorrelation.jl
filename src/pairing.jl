@@ -23,7 +23,7 @@ function sort_pairs(pairs::AbstractArray)
     # fill dictionary based on detected correlation type
     for stnpair in pairs
         ct = get_corrtype(stnpair)
-        sorted_pairs[ct] = push!(sorted_pairs[ct], stnpair)
+        push!(sorted_pairs[ct], stnpair)
     end
     #
     # # remove ["",""] used to initialize dict
