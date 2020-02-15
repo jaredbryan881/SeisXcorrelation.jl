@@ -70,8 +70,8 @@ function seisstack(InputDict::Dict)
 
         corrtype   = InputDict["corrtype"]
 
-        if any(occursin.("acorr", corrtype))
-			corrlist = corrsta["acorr"]
+        if any(occursin.("auto_achan", corrtype))
+			corrlist = corrsta["auto_achan"]
 			for i = 1:size(corrlist, 2)
 				pair1 = join(split.(corrlist, ".")[1,:][i][1:2], ".")
 				pair2 = join(split.(corrlist, ".")[2,:][i][1:2], ".")
@@ -80,8 +80,8 @@ function seisstack(InputDict::Dict)
 			end
         end
 
-        if any(occursin.("xcorr", corrtype))
-			corrlist = corrsta["xcorr"]
+        if any(occursin.("auto_xchan", corrtype))
+			corrlist = corrsta["auto_xchan"]
 			for i = 1:size(corrlist, 2)
 				pair1 = join(split.(corrlist, ".")[1,:][i][1:2], ".")
 				pair2 = join(split.(corrlist, ".")[2,:][i][1:2], ".")
@@ -90,8 +90,8 @@ function seisstack(InputDict::Dict)
 			end
 		end
 
-        if any(occursin.("xcorrchan", corrtype))
-			corrlist = corrsta["xcorrchan"]
+        if any(occursin.("cross_achan", corrtype))
+			corrlist = corrsta["cross_achan"]
 			for i = 1:size(corrlist, 2)
 				pair1 = join(split.(corrlist, ".")[1,:][i][1:2], ".")
 				pair2 = join(split.(corrlist, ".")[2,:][i][1:2], ".")
@@ -99,6 +99,17 @@ function seisstack(InputDict::Dict)
         		stapair = hcat(stapair, permutedims(hcat(pair1, pair2, comp)))
 			end
 		end
+
+		if any(occursin.("cross_xchan", corrtype))
+			corrlist = corrsta["cross_xchan"]
+			for i = 1:size(corrlist, 2)
+				pair1 = join(split.(corrlist, ".")[1,:][i][1:2], ".")
+				pair2 = join(split.(corrlist, ".")[2,:][i][1:2], ".")
+				comp = join((split.(corrlist, ".")[1,:][i][4][end], split.(corrlist, ".")[2,:][i][4][end]))
+				stapair = hcat(stapair, permutedims(hcat(pair1, pair2, comp)))
+			end
+		end
+
     end
 
 	fodir = Output_dir*"/stack"
@@ -593,12 +604,12 @@ function map_stack(InputDict::Dict, station::Tuple)
 			figdir = InputDict["Output_dir"]*"/fig_stackedcc"
 			if !ispath(figdir) mkpath(figdir); end
 			strfreq = @sprintf("%4.2f-%4.2f", round(freqbandmin, digits=2), round(freqbandmax, digits=2))
-			figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-$(comp)-"*strfreq*"."*figfmt
+			figname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-$(comp1)$(comp2)-"*strfreq*"."*figfmt
 			println(figname)
 			Plots.savefig(p, figname)
 
 			# save heatmap matrix for replot
-			figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-$(comp)-"*strfreq*".jld2"
+			figjldname = figdir*"/cc_$(stackmode)_$(stn1)-$(stn2)-$(comp1)$(comp2)-"*strfreq*".jld2"
 			FileIO.save(figjldname, Dict("heatmap" => xcorrplot, "T" => xcorr_all.misc["T"]))
 		end
     end

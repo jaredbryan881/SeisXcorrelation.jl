@@ -55,8 +55,8 @@ function get_corrtype(stnpair::Array{String, 1})
 
     stn1 = join(split(stnpair[1], ".")[1:2], ".")
     cha1 = split(stnpair[1], ".")[4][end]
-    stn2 = join(split(stnpair[1], ".")[1:2], ".")
-    cha2 = split(stnpair[1], ".")[4][end]
+    stn2 = join(split(stnpair[2], ".")[1:2], ".")
+    cha2 = split(stnpair[2], ".")[4][end]
 
     if (stn1 == stn2) && (cha1 == cha2)
         ct = "auto-achan"
@@ -64,11 +64,12 @@ function get_corrtype(stnpair::Array{String, 1})
         ct = "auto-xchan"
     elseif (stn1 != stn2) && (cha1 == cha2)
         ct = "cross-achan"
-    else (stn1 != stn2) && (cha1 != cha2)
+    elseif (stn1 != stn2) && (cha1 != cha2)
         ct = "cross-xchan"
     else
         warning("corrtype error with $(stn1).$(cha1)-$(stn2).$(cha2). at get_corrtype()")
     end
+
     return ct
 #     if stnpair[1] == stnpair[2]
 #         ct = "acorr"
@@ -79,5 +80,5 @@ function get_corrtype(stnpair::Array{String, 1})
 #     else
 #         ct = "xcorr"
 #     end
-    return ct
+    # return ct
 end
