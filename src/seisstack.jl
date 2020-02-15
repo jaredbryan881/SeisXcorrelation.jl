@@ -173,10 +173,13 @@ function map_stack(InputDict::Dict, station::Tuple)
     # station pairs
     stn1 = station[1]
     stn2 = station[2]
-	comp = station[3]
+	#debug
+	print("compall"); @show  station[3]
+	@show comp1 = station[3][1]
+	@show comp2 = station[3][2]
 
-    stnpair = stn1*"-"*stn2*"-"*comp
-    stnpairrev = stn2*"-"*stn1*"-"*comp
+    @show stnpair = stn1*"-"*stn2*"-"*comp1*comp2
+    @show stnpairrev = stn2*"-"*stn1*"-"*comp2*comp1
 
     #show progress
     progid = findfirst(x -> x==station, InputDict["stapairlist"])
@@ -185,7 +188,7 @@ function map_stack(InputDict::Dict, station::Tuple)
     end
 
     # output file name
-    foname = InputDict["fodir"]*"/stack_$(stn1)-$(stn2)-$(comp).jld2"
+    foname = InputDict["fodir"]*"/stack_$(stn1)-$(stn2)-$(comp1)$(comp2).jld2"
 
     # time lags for xcorr
     lags = -maxlag:1/fs:maxlag
@@ -261,7 +264,9 @@ function map_stack(InputDict::Dict, station::Tuple)
                 f_ref = jldopen(reference, "r")
 
                 ref = try
-					f_ref[ref_stnpair]
+					#f_ref[ref_stnpair]
+					# reference is saved as "stnpair"
+					f_ref[stnpair]
 				catch
 					println("reference not found. make reference = false")
 					reference = false
