@@ -15,7 +15,7 @@ Sort station pairs into their correlation category (auto-correlation, cross-corr
 function sort_pairs(pairs::AbstractArray)
     # dict containing each correlation category
     # preallocation of dict size assumes all stations have the same number of channels, which may not be true.
-    sorted_pairs = Dict{String, Array{String}}("auto-achan"     => [],
+    sorted_pairs = Dict("auto-achan"     => [],
                                                 "auto-xchan"     => [],
                                                 "cross-achan"     => [],
                                                 "cross-xchan"     => [])
