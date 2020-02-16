@@ -332,11 +332,12 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 		        #     #continue
                 # end
 
-                #===
-                2020.02.13 Apply wavelet transform and append wtcorr to xcorr.misc
-                This inclease the strage use for cc, but will optimize cpu speed
-                ===#
-    			append_wtcorr!(xcorr, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
+                # #===
+                # 2020.02.13 Apply wavelet transform and append wtcorr to xcorr.misc
+                # This inclease the strage use for cc, but will optimize cpu speed
+                # 2020.02.26 move to just before dumping due to memory saving
+                # ===#
+    			# append_wtcorr!(xcorr, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
 
                 push!(varnamelist, varname)
                 push!(xcorrlist, xcorr)
@@ -384,7 +385,10 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         outFile["info/errors"] = tserrorList
 
         for (i, varname) in enumerate(varnamelist)
-            outFile[varname] = xcorrlist[i]
+            xcorr_of_varname    = @view xcorrlist[i]
+            append_wtcorr!(xcorr_of_varname, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
+            outFile[varname] = xcorr_varname
+            #outFile[varname] = xcorrlist[i]
         end
     end
 
