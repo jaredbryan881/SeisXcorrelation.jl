@@ -385,9 +385,9 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         outFile["info/errors"] = tserrorList
 
         for (i, varname) in enumerate(varnamelist)
-            xcorr_of_varname    = @view xcorrlist[i]
+            xcorr_of_varname    = xcorrlist[i]
             append_wtcorr!(xcorr_of_varname, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
-            outFile[varname] = xcorr_varname
+            outFile[varname] = xcorr_of_varname
             #outFile[varname] = xcorrlist[i]
         end
     end
