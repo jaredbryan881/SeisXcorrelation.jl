@@ -471,7 +471,7 @@ function robust_reference_xcorr(InputDict::Dict)
 				comp2 = xcorr_temp.comp[2]
 				nochan_stnpair = stn1*"-"*stn2*"-"*comp1*comp2
 				nochan_stnpairrev = stn2*"-"*stn1*"-"*comp2*comp1
-				
+
 				T = size(xcorr_temp.corr, 1)
 				wtcorr_reshaped = reshape(xcorr_temp.corr, T, 1, Nfreqband)
 

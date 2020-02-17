@@ -320,6 +320,13 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
                 #xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
                 # save location of each station
+
+                #DEBUG: xchan
+                debugcomp = xcorr.comp
+                println("cc name:"*xcorr.name)
+                println("cc comp:"*debugcomp*" must be = stn1:"*stn1*" stn2:"*stn2)
+                println("var name =: "*varname)
+
                 xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
 
                 # stack over DL_time_unit
@@ -385,7 +392,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         outFile["info/errors"] = tserrorList
 
         for (i, varname) in enumerate(varnamelist)
-            xcorr_of_varname    = xcorrlist[i]
+            xcorr_of_varname = xcorrlist[i]
             append_wtcorr!(xcorr_of_varname, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
             outFile[varname] = xcorr_of_varname
             #outFile[varname] = xcorrlist[i]
