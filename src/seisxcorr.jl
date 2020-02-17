@@ -91,7 +91,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     tserrorList = []
 
     # load input file
-    inFile = jldopen(finame, "r")
+    infile = jldopen(finame, "r")
 
     # split dataset names (keys of data) by "/" to get station list
     # assume form "$tstamp/$station"
@@ -99,16 +99,16 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     #stlist = sort([string(split.(dsk[i], "/")[2]) for i=1:length(dsk)])
     stlist =
     try
-        collect(keys(inFile["$tstamp"]))
+        collect(keys(infile["$tstamp"]))
     catch
         # this time stamp has no data
         # create empty output file for this time stamp, fill relevant info
         println("$tstamp has no data. skip this day with empty cc file $basefoname.$tstamp.jld2.")
-        outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
-        outFile["info/stationlist"] = String[]
-        outFile["info/timeunit"] = time_unit
-        close(inFile)
-        close(outFile)
+        outfile = jldopen("$basefoname.$tstamp.jld2", "a+")
+        outfile["info/stationlist"] = String[]
+        outfile["info/timeunit"] = time_unit
+        close(infile)
+        close(outfile)
         return nothing
     end
 
@@ -116,8 +116,14 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     #stniter = 0 # counter to prevent computing duplicate xcorrs with reversed order
     # iterate over station list
 
-    varnamelist = []
-    xcorrlist = []
+    # clean preexisting cc file
+    if ispath("$basefoname.$tstamp.jld2")
+        rm("$basefoname.$tstamp.jld2")
+    end
+
+    outfile = jldopen("$basefoname.$tstamp.jld2", true, true, true, IOStream)
+    outfile["info/stationlist"] = stlist
+    outfile["info/timeunit"] = time_unit
 
     for (stniter, stn1) in enumerate(stlist)
 
@@ -130,7 +136,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
         else
             # read station SeisChannels into SeisData before FFT
             S1 = try
-                    SeisData(inFile["$tstamp/$stn1"])
+                    SeisData(infile["$tstamp/$stn1"])
                  catch
                      println("$tstamp: $stn1 encountered an error on FFT1 read seisdata. Skipping.")
                      push!(tserrorList, "$stn1")
@@ -214,7 +220,7 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 else
                     # read station SeisChannels into SeisData before FFT
                     S2 = try
-                            SeisData(inFile["$tstamp/$stn2"])
+                            SeisData(infile["$tstamp/$stn2"])
                         catch
                             println("$tstamp: $stn2 encountered an error on FFT2 read seisdata. Skipping.")
                             push!(tserrorList, "$stn2")
@@ -300,8 +306,6 @@ function map_xcorr(tstamp::String, InputDict::Dict)
 
                 tt3temp = @elapsed xcorr = compute_cc(FFT1, FFT2, maxtimelag, corr_type="cross-correlation")
                 #print("xcorr: $tt3temp ")
-                varname = "$tstamp/$stn1.$stn2"
-
 
 		           #DEBUG
 	            # if stn1 == stn2 == "BP.VCAB..BP1" && occursin("57", tstamp)
@@ -321,13 +325,11 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 #xcorr.misc["dist"] = dist(FFT1.loc, FFT2.loc)
                 # save location of each station
 
-                #DEBUG: xchan
-                debugcomp = xcorr.comp
-                println("cc name:"*xcorr.name)
-                println("cc comp:"*debugcomp*" must be = stn1:"*stn1*" stn2:"*stn2)
-                println("var name =: "*varname)
-
-                xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
+                if stn1 == stn2
+                    xcorr.misc["location"] = Dict(stn1=>FFT1.loc)
+                else
+                    xcorr.misc["location"] = Dict(stn1=>FFT1.loc, stn2=>FFT2.loc)
+                end
 
                 # stack over DL_time_unit
                 if stack==true stack!(xcorr, allstack=true) end
@@ -346,11 +348,35 @@ function map_xcorr(tstamp::String, InputDict::Dict)
                 # ===#
     			# append_wtcorr!(xcorr, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
 
-                push!(varnamelist, varname)
-                push!(xcorrlist, xcorr)
+                # push!(varnamelist, varname)
+                # push!(xcorrlist, xcorr)
 
-                # jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
-                #     outFile[varname] = xcorr
+                # @show xcorrlist[end].misc["location"]
+
+                # xcorr_of_varname = xcorrlist[i]
+
+                # println("before append")
+                # @show xcorr_of_varname.name
+                # @show xcorr_of_varname.misc["location"]
+                #DEBUG: xchan
+                # debugcomp = xcorr.comp
+                # println("cc name:"*xcorr.name)
+                # println("cc comp:"*debugcomp*" must be = stn1:"*stn1*" stn2:"*stn2)
+                # @show xcorr.misc["location"]
+
+                # varname = "$tstamp/$stn1.$stn2"
+
+                append_wtcorr!(xcorr, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
+                outfile["$tstamp/$stn1.$stn2"] = xcorr
+
+                #
+                # println("after append")
+                # @show xcorr_of_varname.name
+                # @show xcorr_of_varname.misc["location"]
+
+
+                # jldopen("$basefoname.$tstamp.jld2", "a+") do outfile
+                #     outfile[varname] = xcorr
                 # end
                 # catch y
                 #     println(y)
@@ -365,11 +391,10 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     end
 
     # save xcorr outside the loop
+    outfile["info/errors"] = tserrorList
 
-    # clean preexisting cc file
-    if ispath("$basefoname.$tstamp.jld2")
-        rm("$basefoname.$tstamp.jld2")
-    end
+    close(infile)
+    close(outfile)
 
     #DEBUG
     # if occursin("2003.96.", tstamp)
@@ -384,23 +409,31 @@ function map_xcorr(tstamp::String, InputDict::Dict)
     #     end
     # end
 
-    #jldopen("$basefoname.$tstamp.jld2", "a+") do outFile
-    jldopen("$basefoname.$tstamp.jld2", true, true, true, IOStream) do outFile
+    #jldopen("$basefoname.$tstamp.jld2", "a+") do outfile
+    # jldopen("$basefoname.$tstamp.jld2", true, true, true, IOStream) do outfile
+    #
+    #
+    #
+    #     for (i, varname) in enumerate(varnamelist)
+    #         xcorr_of_varname = xcorrlist[i]
+    #
+    #         println("before append")
+    #         @show xcorr_of_varname.name
+    #         @show xcorr_of_varname.misc["location"]
+    #
+    #         append_wtcorr!(xcorr_of_varname, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
+    #
+    #         println("after append")
+    #         @show xcorr_of_varname.name
+    #         @show xcorr_of_varname.misc["location"]
+    #
+    #         outfile[varname] = xcorr_of_varname
+    #         #outfile[varname] = xcorrlist[i]
+    #     end
+    # end
 
-        outFile["info/stationlist"] = stlist
-        outFile["info/timeunit"] = time_unit
-        outFile["info/errors"] = tserrorList
 
-        for (i, varname) in enumerate(varnamelist)
-            xcorr_of_varname = xcorrlist[i]
-            append_wtcorr!(xcorr_of_varname, freqband, figdir="", α0 = InputDict["α0"], αmax = InputDict["αmax"])
-            outFile[varname] = xcorr_of_varname
-            #outFile[varname] = xcorrlist[i]
-        end
-    end
-
-    close(inFile)
-    # close(outFile)
+    # close(outfile)
 
     return nothing
 
@@ -464,8 +497,8 @@ function map_xcorr_highorder(data::Dict, tstamp::String, corrstationlist::Array{
         win_len  = convert(Int64, win_len*fs)
     end
 
-    outFile = jldopen("$basefoname.$tstamp.jld2", "a+")
-    outFile["info/corrstationlist"] = xcorrlist
+    outfile = jldopen("$basefoname.$tstamp.jld2", "a+")
+    outfile["info/corrstationlist"] = xcorrlist
 
     println("$tstamp: Computing cross-correlations")
     for p1=1:length(xcorrlist[1,:])
@@ -570,7 +603,7 @@ function map_xcorr_highorder(data::Dict, tstamp::String, corrstationlist::Array{
             # save cross-correlation
             varname = "$tstamp/$stn1.$stn2/$virt_src"
             try
-                outFile[varname] = [xcorr_c3_neg, xcorr_c3_pos]
+                outfile[varname] = [xcorr_c3_neg, xcorr_c3_pos]
             catch
                 println("$varname encountered an error on saving to JLD2.")
                 push!(tserrorList, varname)
@@ -587,8 +620,8 @@ function map_xcorr_highorder(data::Dict, tstamp::String, corrstationlist::Array{
 
         pairiter += 1
     end
-    outFile["erorrs"] = tserrorList
-    close(outFile)
+    outfile["erorrs"] = tserrorList
+    close(outfile)
 end
 
 """
